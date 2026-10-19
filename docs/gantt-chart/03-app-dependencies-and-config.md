@@ -23,7 +23,18 @@ Every reused package below is pinned to the **exact version** found in `UI/packa
 
 ## New packages added for this prototype that aren't in `databonder` today
 
-**None, as of this writing.** Every interaction need identified so far (reschedule-drag, reassign-drag, dependency-link-drawing, the scenario engine itself, the sticky collapsible sidebar) maps onto either a library already pinned above or a native platform feature (CSS `position: sticky` for the sidebar, plain pointer events for the reschedule drag). If a genuine gap shows up during the port — something none of the above actually covers — it gets added to this table with the same treatment: exact version, and a one-line reason it couldn't be covered by what's already here. No dependency gets added silently.
+Two showed up once the app was actually scaffolded and installed — not speculative additions, both required to make `npm install`/`npm run build` succeed at all:
+
+| Package | Version | Why it's needed |
+| --- | --- | --- |
+| `dayjs` | 1.11.11 | A transitive requirement of `@mantine/dates@8.2.7`. Not a deliberate choice, just what that package needs underneath — `databonder`'s own `UI/package.json` ends up with the same dependency for the same reason. |
+| `autoprefixer` | 10.4.19 | Required by the `postcss-preset-mantine` + Tailwind pipeline to actually run `next build`. Standard PostCSS tooling, not a feature decision. |
+
+Everything else — no Gantt library, no new state management, no new drag library beyond what was already pinned — held exactly as planned. Both of the above are the kind of dependency-of-a-dependency that doesn't show up until you actually try to install, which is exactly why this table says "as of this writing" rather than claiming to be complete in advance.
+
+## A real version conflict, not a mistake
+
+`@mantine/core@7.10.1` and `@mantine/dates@8.2.7` — both pinned exactly as `databonder`'s own `UI/package.json` has them — don't actually satisfy each other's peer-dependency requirements (`@mantine/dates@8.2.7` expects `@mantine/core@8.2.7`). This isn't a porting mistake; `databonder`'s own `package.json` has the identical mismatch, pinned the identical way. A fresh `npm install` needs `legacy-peer-deps=true` (set in `app/.npmrc`) to get past it. Worth flagging rather than silently working around: this version gap already exists in the real app today and should probably get resolved there independently of this feature, not just papered over here.
 
 ## Config reused, not reinvented
 
