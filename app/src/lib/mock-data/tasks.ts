@@ -1,0 +1,310 @@
+// Ported from prototype/app.js's TASKS / BASE_SPRINTS / MS / BASE_LINKS,
+// reshaped to real field names per docs/gantt-chart/04-data-shape-mapping.md:
+// who -> assignee, rev -> reviewer, stk -> stakeholders.
+
+import type { Link, Milestone, Sprint, TaskDef } from "@/lib/engine/types";
+
+export const BASE_SPRINTS: Sprint[] = [
+  { id: "s5", name: "Sprint 5", start: "2026-10-05", end: "2026-10-16" },
+  { id: "s6", name: "Sprint 6", start: "2026-10-19", end: "2026-10-30" },
+  { id: "s7", name: "Sprint 7", start: "2026-11-02", end: "2026-11-13" },
+  { id: "s8", name: "Sprint 8", start: "2026-11-16", end: "2026-11-27" },
+];
+
+export const MILESTONES: Milestone[] = [
+  {
+    id: "lcNotice",
+    name: "LC non-renewal notice deadline",
+    date: "2026-10-28",
+    color: "#c2410c",
+  },
+  { id: "rel23", name: "Release 2.3", date: "2026-11-13", color: "#1d4ed8" },
+  { id: "cod", name: "PPA COD (contract)", date: "2026-11-20", color: "#b91c1c" },
+];
+
+export const BASE_TASKS: TaskDef[] = [
+  {
+    id: "OAK-160",
+    name: "LC expiry rule spec",
+    startDate: "2026-10-05",
+    gates: null,
+    path: [
+      {
+        stage: "planning",
+        assignee: "ana",
+        reviewer: "moiz",
+        stakeholders: ["CFO"],
+        steps: [
+          ["scope", 3],
+          ["review", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-170",
+    name: "COD readiness checklist",
+    startDate: "2026-10-06",
+    gates: null,
+    path: [
+      {
+        stage: "planning",
+        assignee: "moiz",
+        reviewer: "ana",
+        stakeholders: ["Lender", "Client PM"],
+        steps: [
+          ["scope", 4],
+          ["review", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-150",
+    name: "Dependency picker",
+    startDate: "2026-10-09",
+    gates: null,
+    path: [
+      {
+        stage: "design",
+        assignee: "lee",
+        reviewer: "ana",
+        stakeholders: ["Client PM"],
+        steps: [
+          ["design", 3],
+          ["review", 1],
+          ["docs", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-151",
+    name: "Export API",
+    startDate: "2026-10-09",
+    gates: null,
+    path: [
+      {
+        stage: "design",
+        assignee: "ana",
+        reviewer: "lee",
+        stakeholders: ["Client PM"],
+        steps: [
+          ["design", 3],
+          ["review", 1],
+          ["docs", 1],
+        ],
+      },
+      {
+        stage: "development",
+        assignee: "ravi",
+        reviewer: "sam",
+        stakeholders: ["Client PM"],
+        steps: [
+          ["build", 5],
+          ["qa", 2],
+          ["release", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-161",
+    name: "LC non-renewal notice",
+    startDate: "2026-10-09",
+    gates: null,
+    path: [
+      {
+        stage: "design",
+        assignee: "sam",
+        reviewer: "ana",
+        stakeholders: ["CFO", "Issuing bank"],
+        steps: [
+          ["design", 3],
+          ["copy", 2],
+          ["review", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-162",
+    name: "Send LC notice to issuer",
+    startDate: "2026-10-15",
+    gates: "lcNotice",
+    path: [
+      {
+        stage: "marketing",
+        assignee: "sam",
+        reviewer: "ana",
+        stakeholders: ["Issuing bank", "CFO"],
+        steps: [
+          ["draft", 2],
+          ["review", 1],
+          ["send", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-142",
+    name: "PPA table extraction",
+    startDate: "2026-10-11",
+    gates: null,
+    path: [
+      {
+        stage: "development",
+        assignee: "ravi",
+        reviewer: "sam",
+        stakeholders: ["Client PM"],
+        steps: [
+          ["build", 7],
+          ["qa", 2],
+          ["release", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-173",
+    name: "Dependency picker build",
+    startDate: "2026-10-13",
+    gates: null,
+    path: [
+      {
+        stage: "development",
+        assignee: "lee",
+        reviewer: "sam",
+        stakeholders: [],
+        steps: [
+          ["build", 5],
+          ["qa", 2],
+          ["release", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-139",
+    name: "Filters panel",
+    startDate: "2026-10-22",
+    gates: null,
+    path: [
+      {
+        stage: "development",
+        assignee: "ravi",
+        reviewer: "sam",
+        stakeholders: ["Client PM"],
+        steps: [
+          ["build", 4],
+          ["qa", 2],
+          ["release", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-171",
+    name: "LGIA in-service confirmation",
+    startDate: "2026-10-20",
+    gates: null,
+    path: [
+      {
+        stage: "development",
+        assignee: "moiz",
+        reviewer: "sam",
+        stakeholders: ["Lender", "Utility"],
+        steps: [
+          ["build", 6],
+          ["qa", 2],
+          ["release", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-180",
+    name: "Release 2.3 notes",
+    startDate: "2026-10-29",
+    gates: "rel23",
+    path: [
+      {
+        stage: "marketing",
+        assignee: "lee",
+        reviewer: "ana",
+        stakeholders: ["Client PM"],
+        steps: [
+          ["draft", 3],
+          ["review", 1],
+          ["send", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-172",
+    name: "Lender COD certificate",
+    startDate: "2026-10-29",
+    gates: "cod",
+    path: [
+      {
+        stage: "development",
+        assignee: "moiz",
+        reviewer: "sam",
+        stakeholders: ["Lender"],
+        steps: [
+          ["build", 4],
+          ["qa", 2],
+        ],
+      },
+      {
+        stage: "marketing",
+        assignee: "ana",
+        reviewer: "moiz",
+        stakeholders: ["Lender", "CFO"],
+        steps: [
+          ["draft", 4],
+          ["review", 2],
+          ["send", 1],
+        ],
+      },
+    ],
+  },
+  {
+    id: "OAK-181",
+    name: "Investor update deck",
+    startDate: "2026-11-11",
+    gates: null,
+    path: [
+      {
+        stage: "marketing",
+        assignee: "sam",
+        reviewer: "ana",
+        stakeholders: ["Investors", "CFO"],
+        steps: [
+          ["draft", 3],
+          ["review", 1],
+          ["send", 1],
+        ],
+      },
+    ],
+  },
+];
+
+// Cross-task links are between steps (from unit uid -> to unit uid).
+export const BASE_LINKS: Link[] = [
+  ["OAK-160:planning:review", "OAK-150:design:design"],
+  ["OAK-160:planning:review", "OAK-151:design:design"],
+  ["OAK-160:planning:review", "OAK-161:design:design"],
+  ["OAK-170:planning:review", "OAK-142:development:build"],
+  ["OAK-170:planning:review", "OAK-171:development:build"],
+  ["OAK-151:development:release", "OAK-139:development:build"],
+  ["OAK-150:design:review", "OAK-173:development:build"],
+  ["OAK-142:development:qa", "OAK-171:development:build"],
+  ["OAK-161:design:review", "OAK-162:marketing:draft"],
+  ["OAK-139:development:release", "OAK-180:marketing:draft"],
+  ["OAK-173:development:release", "OAK-180:marketing:draft"],
+  ["OAK-171:development:release", "OAK-172:development:build"],
+  ["OAK-142:development:release", "OAK-172:development:build"],
+  ["OAK-172:marketing:send", "OAK-181:marketing:draft"],
+].map(([from, to]) => ({ from, to }));
