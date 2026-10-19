@@ -5,4 +5,6 @@
 | [Discovery & scoping](./00-discovery-and-scoping.md) | Current repo reality and the open doubts — read this first, nothing past here is decided yet |
 | [Competitor research](./competitors/INDEX.md) | One file per tool (Jira, ClickUp, Wrike, Smartsheet, Airtable, Notion, Linear) — add new screenshots here as they come in |
 | [Feature plan](./01-feature-plan.md) | The synthesis — what to build, what to skip, what's still an open question — folded together with an independent review that verified every cited screenshot against the actual product |
-| [Spec: Roadmap Simulation](./02-spec-roadmap-simulation.md) | Reconciles this feature plan with the CTO's much larger Planning Board & Roadmap Simulation doc (step model, scenarios, risk) — problem/solution/user stories/decisions, with a couple of items still being grilled |
+| [Spec: Roadmap Simulation](./02-spec-roadmap-simulation.md) | Reconciles this feature plan with the CTO's much larger Planning Board & Roadmap Simulation doc (step model, scenarios, risk) — problem/solution/user stories/decisions |
+| [App dependencies & config](./03-app-dependencies-and-config.md) | Exactly which `databonder` packages/config the standalone prototype app reuses (pinned to exact versions) and why, so the eventual port has nothing left to reconcile |
+| [Data shape mapping](./04-data-shape-mapping.md) | Every mock-data field mapped against the real Strapi schema — what's reused as-is, what's genuinely new, and where new fields would live |
