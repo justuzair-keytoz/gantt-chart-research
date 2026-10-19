@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <title>Roadmap simulation prototype</title>
+    <header class="top">
+      <div class="brand">
+        OAK · Oakridge Solar<span class="muted"
+          >Roadmap simulation · prototype on fake data</span
+        >
+      </div>
+      <nav class="views" role="tablist" aria-label="Rendering">
+        <button role="tab" data-view="flat" aria-selected="true">
+          Flat Gantt
+        </button>
+        <button role="tab" data-view="3d" aria-selected="false">3D flow</button>
+        <button role="tab" data-view="4d" aria-selected="false">
+          4D: 3D + time
+        </button>
+      </nav>
+      <button
+        id="resetData"
+        class="ghost"
+        title="Clear everything saved in this browser and start from the fake data"
+      >
+        Reset prototype data
+      </button>
+    </header>
+
+    <section class="scen" aria-label="Scenarios">
+      <div class="tabs" id="scenTabs"></div>
+      <button id="newScen">+ New scenario</button>
+      <div class="actions">
+        <button id="linkMode" aria-pressed="false">Add link</button>
+        <button id="resetScen">Reset scenario</button>
+        <button id="compareBtn" aria-pressed="false">Compare</button>
+        <button id="commitBtn" class="primary">Commit this scenario</button>
+      </div>
+    </section>
+
+    <main class="layout">
+      <div class="board">
+        <div class="toolbar" id="toolbar">
+          <button
+            id="undoBtn"
+            title="Undo last change in this scenario (Ctrl/⌘+Z)"
+          >
+            ↶ Undo
+          </button>
+          <span class="sep"></span>
+          <button id="zoomOut" title="Zoom out (Ctrl/⌘ + wheel)">−</button
+          ><span class="zl" id="zoomLbl">100%</span
+          ><button id="zoomIn" title="Zoom in (Ctrl/⌘ + wheel)">+</button>
+          <button id="zoomFit" title="Fit the whole timeline">Fit</button
+          ><button id="zoomToday" title="Scroll to the as-of date">
+            Today
+          </button>
+          <span class="sep"></span>
+          <span class="empty"
+            >Drag empty space to pan · click a step to edit it</span
+          >
+          <span class="saved" id="savedLbl">Saved in this browser</span>
+        </div>
+        <div class="hint" id="hint"></div>
+        <div id="boardWrap"></div>
+        <div class="timebar" id="timebar" hidden></div>
+      </div>
+      <aside class="side">
+        <div class="panel">
+          <h3>Risks in this scenario</h3>
+          <ul id="risks"></ul>
+        </div>
+        <div class="panel">
+          <h3>Levers (secondary, thin)</h3>
+          <ul id="levers">
+            <li class="lever">
+              <input type="checkbox" id="outRavi" /><label for="outRavi"
+                >Ravi out 20–24 Oct</label
+              >
+            </li>
+            <li class="lever">
+              <input type="checkbox" id="outAna" /><label for="outAna"
+                >Ana out 3–7 Nov</label
+              >
+            </li>
+            <li class="lever">
+              <input type="checkbox" id="outSam" /><label for="outSam"
+                >Sam (reviewer) out 27–31 Oct</label
+              >
+            </li>
+            <li class="empty">
+              Sprint boundaries: drag the handle at a sprint's end on the flat
+              axis. Capacity shows as load / 40 step-days per sprint; per-person
+              load is in the Workload panel.
+            </li>
+            <li class="empty">
+              Stage path: each task's stages and the steps inside them come from
+              the fake data; editing the path is not in this prototype.
+            </li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Workload: people × sprints</h3>
+          <div id="workload"></div>
+        </div>
+        <div class="panel">
+          <h3>Efficiency gaps</h3>
+          <ul id="gaps"></ul>
+        </div>
+        <div class="panel">
+          <h3>Changes in this scenario</h3>
+          <ul id="changes"></ul>
+        </div>
+        <div class="panel">
+          <h3>Decision record (committed)</h3>
+          <ul id="decisions">
+            <li class="empty">Nothing committed yet.</li>
+          </ul>
+        </div>
+      </aside>
+    </main>
+
+    <section class="compare" id="compare" hidden>
+      <h3>Compare scenarios</h3>
+      <div id="compareBody"></div>
+    </section>
+
+    <div class="modal" id="modal" hidden>
+      <div
+        class="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dlgTitle"
+      >
+        <h3 id="dlgTitle">Commit scenario to the plan</h3>
+        <div id="dlgBody" style="font-size: 13px"></div>
+        <label style="display: block; margin-top: 10px; font-size: 13px"
+          >Why (goes to each moved task's decision record)
+          <textarea
+            id="dlgWhy"
+            placeholder="e.g. LGIA amendment slipped; protecting COD by pulling the certificate work forward"
+          ></textarea>
+        </label>
+        <div class="row">
+          <button id="dlgCancel">Cancel</button
+          ><button id="dlgOk" class="primary">Commit</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <div class="tip" id="tip"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
