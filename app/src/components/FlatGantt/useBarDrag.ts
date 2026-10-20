@@ -40,6 +40,8 @@ export function resolveBar(sched: ScheduleResult, uid: string): { start: Date; e
 
 export function useBarDrag(opts: {
   svgRef: React.RefObject<SVGSVGElement>;
+  /** Wrapper div containing both the SVG and the reactflow edges layer — scopes the paint-frame's edge query instead of searching the whole document. */
+  chartRef: React.RefObject<HTMLDivElement>;
   ctx: ScheduleContext;
   getOverlay: () => Overlay;
   asOf: string;
@@ -71,10 +73,13 @@ export function useBarDrag(opts: {
         if (grip) grip.setAttribute("x", String(pos.w - 6));
       });
       // Dependency edges now render via reactflow (DependencyEdgesLayer), a
-      // sibling DOM subtree outside `svg`, so this queries the whole
-      // document rather than scoping to svgRef — same `[data-link]`
-      // attribute/id convention as before, just no longer inside this SVG.
-      document.querySelectorAll<SVGPathElement>("[data-link]").forEach((el) => {
+      // sibling DOM subtree outside `svg`, so this scopes to the shared
+      // chart wrapper (both the SVG and the edges layer live under it)
+      // rather than svgRef — same `[data-link]` attribute/id convention as
+      // before, just no longer inside this SVG.
+      const chart = opts.chartRef.current;
+      if (!chart) return;
+      chart.querySelectorAll<SVGPathElement>("[data-link]").forEach((el) => {
         const [from, to] = (el.dataset.link ?? "").split(">");
         const a = opts.rowByUid[from];
         const b = opts.rowByUid[to];
@@ -86,7 +91,7 @@ export function useBarDrag(opts: {
         el.setAttribute("d", elbowPath(pa, pb));
       });
       opts.milestoneLinks.forEach((ml) => {
-        const el = document.querySelector<SVGPathElement>(
+        const el = chart.querySelector<SVGPathElement>(
           `[data-link="${CSS.escape(`${ml.uid}>>${ml.milestoneId}`)}"]`,
         );
         const row = opts.rowByUid[ml.uid];

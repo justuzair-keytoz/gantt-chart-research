@@ -56,6 +56,7 @@ import {
 export function FlatGantt() {
   const state = useRoadmapStore();
   const svgRef = useRef<SVGSVGElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
   const lastPointer = useRef({ x: 0, y: 0 });
   const [selected, setSelected] = useState<{ uid: string; x: number; y: number } | null>(null);
   const [commitOpen, setCommitOpen] = useState(false);
@@ -106,6 +107,20 @@ export function FlatGantt() {
     return m;
   }, [ctx.milestones]);
 
+  // Each milestone's due-date X / row-center Y, computed once and shared by
+  // milestoneLinks' connector targets and flowNodes' anchor positions below
+  // — computing this twice from the same row+due-date inputs risked the two
+  // silently drifting apart after a future edit to either formula.
+  const milestonePointById = useMemo(() => {
+    const m: Record<string, { x: number; y: number }> = {};
+    milestoneRows.forEach((row) => {
+      const ms = milestoneById[row.milestoneId!];
+      if (!ms) return;
+      m[ms.id] = { x: xForDate(ctx.t0, parseISO(ms.dueDate)), y: row.y + row.height / 2 };
+    });
+    return m;
+  }, [milestoneRows, milestoneById, ctx.t0]);
+
   // Gating-task → milestone relationships, fixed-point end (milestone due
   // dates don't move when a gating bar is dragged) — shared by the edge list
   // below and by useBarDrag's paintFrame so connector lines stay glued to
@@ -115,22 +130,23 @@ export function FlatGantt() {
     milestoneRows.forEach((row) => {
       const m = milestoneById[row.milestoneId!];
       if (!m) return;
-      const x = xForDate(ctx.t0, parseISO(m.dueDate));
-      const y = row.y + row.height / 2;
+      const target = milestonePointById[m.id];
+      if (!target) return;
       ctx.tasks
         .filter((t) => t.milestone === m.id)
         .forEach((t) => {
           const uids = ctx.taskUnits[t.id];
           const uid = uids.length ? uids[uids.length - 1] : t.id;
           if (!rowByUid[uid]) return;
-          out.push({ uid, milestoneId: m.id, target: { x, y } });
+          out.push({ uid, milestoneId: m.id, target });
         });
     });
     return out;
-  }, [milestoneRows, milestoneById, ctx.tasks, ctx.taskUnits, ctx.t0, rowByUid]);
+  }, [milestoneRows, milestoneById, milestonePointById, ctx.tasks, ctx.taskUnits, rowByUid]);
 
   const drag = useBarDrag({
     svgRef,
+    chartRef,
     ctx,
     getOverlay: () => state.activeScenario().ov,
     asOf: state.asOf,
@@ -209,12 +225,11 @@ export function FlatGantt() {
       });
     milestoneRows.forEach((row) => {
       const m = milestoneById[row.milestoneId!];
-      if (!m) return;
-      const x = xForDate(ctx.t0, parseISO(m.dueDate));
-      const y = row.y + row.height / 2;
+      const point = m && milestonePointById[m.id];
+      if (!m || !point) return;
       nodes.push({
         id: `milestone::${m.id}`,
-        position: { x, y },
+        position: point,
         width: 1,
         height: 1,
         style: { width: 1, height: 1, opacity: 0 },
@@ -225,7 +240,7 @@ export function FlatGantt() {
       });
     });
     return nodes;
-  }, [rows, sched, ctx.t0, milestoneRows, milestoneById]);
+  }, [rows, sched, ctx.t0, milestoneRows, milestoneById, milestonePointById]);
 
   const flowEdges: Edge<DepEdgeData>[] = useMemo(() => {
     const edges: Edge<DepEdgeData>[] = [];
@@ -309,7 +324,7 @@ export function FlatGantt() {
                 <RowLabel key={row.id} row={row} state={state} />
               ))}
             </div>
-            <div style={{ position: "relative", width, height: svgHeight }}>
+            <div ref={chartRef} style={{ position: "relative", width, height: svgHeight }}>
             <svg ref={svgRef} width={width} height={svgHeight}>
               <defs>
                 <pattern id="revhatch" width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
