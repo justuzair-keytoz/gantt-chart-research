@@ -4,6 +4,23 @@ Tracks what's actually been built against this version's spec ([`spec.md`](./spe
 
 The two entries below predate the ticket breakdown and were written retroactively, covering work already done before this convention existed. Starting with the ticket breakdown under [`./tickets/`](./tickets/), every new entry names the ticket(s) it closes — see [`AGENTS.md`](../../../../AGENTS.md) for the rule.
 
+## 2026-10-20 — Ticket 02 closed: dependency lines via reactflow
+
+**Closes:** [`tickets/02-reactflow-dependency-lines.md`](./tickets/02-reactflow-dependency-lines.md)
+
+**Implemented:**
+- New `FlatGantt/DependencyEdges.tsx`: a `reactflow`-backed layer (`DependencyEdgesLayer`) that is now the single shared mechanism for step↔step, task↔task, and task→milestone connector lines. Pan/zoom/node-drag/selection are disabled — reactflow's viewport is pinned at `{0,0,zoom:1}`, and the chart's only scroll path remains the existing native `overflow: auto` container, so the two coordinate spaces never drift apart.
+- Each bar/milestone gets an invisible 1×1 anchor node purely so reactflow has a valid id to resolve an edge against; the real bar/diamond visuals keep rendering unchanged in `FlatGantt.tsx`'s own SVG. Each edge carries its own `BarPos`-derived endpoints in `data`, recomputed every render from the same `rowByUid`/`sched` state that positions the bars — not from reactflow's own layout.
+- `useBarDrag.ts`'s existing imperative 60fps `paintFrame` (no React re-render during drag) now also patches reactflow's edge `<path>` elements via the same `[data-link]` convention, extended to cover milestone connector edges too.
+
+**Removed:**
+- `layout.ts`'s hand-rolled `linkPath()` elbow router and its `// TODO: replace with reactflow` comment — fully deleted, logic ported into `DependencyEdges.tsx`'s `elbowPath()`/`straightPath()`.
+- `Milestone.tsx`'s inline gating-connector line rendering (`gatingBarPositions` prop) — that line-drawing now happens through the shared reactflow mechanism; the diamond shape, guide line, and label are unchanged.
+
+**Scope note:** the existing click-based `linkMode`/`linkFrom`/`handleLinkClick` link-creation gesture (store-driven, with `wouldCycle` cycle prevention) was preserved as-is — no new mouse-drag-to-connect gesture was introduced, since the v0 app never had one despite the spec's "drag-to-link" phrasing; this ticket's scope was line-drawing/routing only.
+
+Verified: `npm run build` passes with zero TypeScript errors (independently reproduced). Scroll/pan desync was verified by reading the render tree (no independent transform on either layer); zoom is not a feature of this app, so that specific failure mode is not applicable.
+
 ## 2026-10-20 — Ticket 01 closed: milestones get their own row
 
 **Closes:** [`tickets/01-milestone-own-row.md`](./tickets/01-milestone-own-row.md)
