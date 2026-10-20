@@ -178,19 +178,3 @@ export function barPosForRow(t0: Date, row: GanttRow, start: Date, durationDays:
     h: barH,
   };
 }
-
-// TODO: replace with reactflow per docs/gantt-chart/03-app-dependencies-and-config.md
-// (positioning reactflow nodes at these same bar coordinates and letting it
-// own edge routing + drag-to-connect). Kept as the prototype's hand-rolled
-// SVG elbow router for v0 so shipping isn't blocked on the reactflow spike.
-/** Elbow-routed connector, ported from prototype's linkPath(). */
-export function linkPath(a: BarPos, b: BarPos): string {
-  const x1 = a.x + a.w;
-  const y1 = a.y + a.h / 2;
-  const x2 = b.x;
-  const y2 = b.y + b.h / 2;
-  if (Math.abs(y1 - y2) < 1 && x2 >= x1) return `M${x1},${y1} H${x2}`;
-  const mid = x1 + 8;
-  if (x2 >= x1 + 16) return `M${x1},${y1} H${mid} V${y2} H${x2}`;
-  return `M${x1},${y1} H${x1 + 8} V${(y1 + y2) / 2} H${x2 - 8} V${y2} H${x2}`;
-}

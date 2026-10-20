@@ -26,6 +26,8 @@ import { DAYS, OUT_PRESETS, T0 } from "@/lib/mock-data";
 import { useRoadmapStore, type RoadmapState } from "@/lib/store/useRoadmapStore";
 import { buildContext } from "@/lib/store/deriveContext";
 
+import type { Edge, Node } from "reactflow";
+
 import {
   AXIS_H,
   DW,
@@ -33,13 +35,13 @@ import {
   allCollapsibleIds,
   barPosForRow,
   buildRows,
-  linkPath,
   xForDate,
   type GanttRow,
 } from "./layout";
 import { Bar, GhostBar } from "./Bar";
 import { MilestoneDiamond } from "./Milestone";
-import { resolveBar, useBarDrag } from "./useBarDrag";
+import { resolveBar, useBarDrag, type MilestoneLink } from "./useBarDrag";
+import { DependencyEdgesLayer, type DepEdgeData } from "./DependencyEdges";
 import { StepEditor } from "@/components/StepEditor/StepEditor";
 import { CommitDialog } from "@/components/CommitDialog/CommitDialog";
 import {
@@ -97,6 +99,36 @@ export function FlatGantt() {
     return m;
   }, [rows]);
 
+  const milestoneRows = useMemo(() => rows.filter((r) => r.kind === "milestone"), [rows]);
+  const milestoneById = useMemo(() => {
+    const m: Record<string, (typeof ctx.milestones)[number]> = {};
+    ctx.milestones.forEach((ms) => (m[ms.id] = ms));
+    return m;
+  }, [ctx.milestones]);
+
+  // Gating-task → milestone relationships, fixed-point end (milestone due
+  // dates don't move when a gating bar is dragged) — shared by the edge list
+  // below and by useBarDrag's paintFrame so connector lines stay glued to
+  // the bar during a reschedule-drag.
+  const milestoneLinks: MilestoneLink[] = useMemo(() => {
+    const out: MilestoneLink[] = [];
+    milestoneRows.forEach((row) => {
+      const m = milestoneById[row.milestoneId!];
+      if (!m) return;
+      const x = xForDate(ctx.t0, parseISO(m.dueDate));
+      const y = row.y + row.height / 2;
+      ctx.tasks
+        .filter((t) => t.milestone === m.id)
+        .forEach((t) => {
+          const uids = ctx.taskUnits[t.id];
+          const uid = uids.length ? uids[uids.length - 1] : t.id;
+          if (!rowByUid[uid]) return;
+          out.push({ uid, milestoneId: m.id, target: { x, y } });
+        });
+    });
+    return out;
+  }, [milestoneRows, milestoneById, ctx.tasks, ctx.taskUnits, ctx.t0, rowByUid]);
+
   const drag = useBarDrag({
     svgRef,
     ctx,
@@ -104,6 +136,7 @@ export function FlatGantt() {
     asOf: state.asOf,
     baselineUnits,
     rowByUid,
+    milestoneLinks,
     onCommit: (uid, patch, label) => {
       state.editOverlay(label, (ov) => {
         if (patch.starts) Object.assign(ov.starts, patch.starts);
@@ -150,38 +183,100 @@ export function FlatGantt() {
 
   const asOfX = xForDate(T0, parseISO(state.asOf));
 
-  const links: JSX.Element[] = [];
-  ctx.steps.forEach((u) => {
-    sched.deps[u.uid]?.forEach((p) => {
-      const a = rowByUid[p];
-      const b = rowByUid[u.uid];
-      if (!a || !b) return;
-      const sa = resolveBar(sched, p);
-      const sb = resolveBar(sched, u.uid);
-      const pa = barPosForRow(ctx.t0, a, sa.start, sa.durationDays);
-      const pb = barPosForRow(ctx.t0, b, sb.start, sb.durationDays);
-      links.push(
-        <path
-          key={`${p}>${u.uid}`}
-          data-link={`${p}>${u.uid}`}
-          d={linkPath(pa, pb)}
-          stroke="#9ca3af"
-          strokeWidth={1.3}
-          fill="none"
-          style={{ cursor: "pointer" }}
-          onClick={() => state.removeLink(p, u.uid)}
-        />,
-      );
+  // Dependency lines (step↔step, task↔task via effectiveDeps — same source
+  // as before) and task→milestone connector lines now draw through one
+  // shared mechanism: reactflow, via DependencyEdgesLayer. Anchor nodes
+  // carry no visuals (the bars/diamonds still render in this component's own
+  // SVG below); edges carry their own BarPos-derived endpoints in `data` so
+  // reactflow draws against this app's date grid, not its own layout.
+  const flowNodes: Node[] = useMemo(() => {
+    const nodes: Node[] = rows
+      .filter((r) => !!r.uid)
+      .map((r) => {
+        const s = resolveBar(sched, r.uid!);
+        const pos = barPosForRow(ctx.t0, r, s.start, s.durationDays);
+        return {
+          id: r.uid!,
+          position: { x: pos.x, y: pos.y },
+          width: 1,
+          height: 1,
+          style: { width: 1, height: 1, opacity: 0 },
+          draggable: false,
+          selectable: false,
+          connectable: false,
+          data: {},
+        };
+      });
+    milestoneRows.forEach((row) => {
+      const m = milestoneById[row.milestoneId!];
+      if (!m) return;
+      const x = xForDate(ctx.t0, parseISO(m.dueDate));
+      const y = row.y + row.height / 2;
+      nodes.push({
+        id: `milestone::${m.id}`,
+        position: { x, y },
+        width: 1,
+        height: 1,
+        style: { width: 1, height: 1, opacity: 0 },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        data: {},
+      });
     });
-  });
+    return nodes;
+  }, [rows, sched, ctx.t0, milestoneRows, milestoneById]);
+
+  const flowEdges: Edge<DepEdgeData>[] = useMemo(() => {
+    const edges: Edge<DepEdgeData>[] = [];
+    ctx.steps.forEach((u) => {
+      sched.deps[u.uid]?.forEach((p) => {
+        const a = rowByUid[p];
+        const b = rowByUid[u.uid];
+        if (!a || !b) return;
+        const sa = resolveBar(sched, p);
+        const sb = resolveBar(sched, u.uid);
+        edges.push({
+          id: `${p}>${u.uid}`,
+          source: p,
+          target: u.uid,
+          type: "dependency",
+          data: {
+            kind: "elbow",
+            sourcePos: barPosForRow(ctx.t0, a, sa.start, sa.durationDays),
+            targetPos: barPosForRow(ctx.t0, b, sb.start, sb.durationDays),
+            removable: true,
+            from: p,
+            to: u.uid,
+          },
+        });
+      });
+    });
+    milestoneLinks.forEach((ml) => {
+      const row = rowByUid[ml.uid];
+      if (!row) return;
+      const s = resolveBar(sched, ml.uid);
+      const m = milestoneById[ml.milestoneId];
+      edges.push({
+        id: `${ml.uid}>>${ml.milestoneId}`,
+        source: ml.uid,
+        target: `milestone::${ml.milestoneId}`,
+        type: "dependency",
+        data: {
+          kind: "straight",
+          sourcePos: barPosForRow(ctx.t0, row, s.start, s.durationDays),
+          targetPos: ml.target,
+          stroke: m?.color,
+          strokeWidth: 1.5,
+          dashed: "4 3",
+          removable: false,
+        },
+      });
+    });
+    return edges;
+  }, [ctx.steps, ctx.t0, sched, rowByUid, milestoneLinks, milestoneById]);
 
   const allIds = useMemo(() => allCollapsibleIds(rows), [rows]);
-  const milestoneRows = useMemo(() => rows.filter((r) => r.kind === "milestone"), [rows]);
-  const milestoneById = useMemo(() => {
-    const m: Record<string, (typeof ctx.milestones)[number]> = {};
-    ctx.milestones.forEach((ms) => (m[ms.id] = ms));
-    return m;
-  }, [ctx.milestones]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -214,6 +309,7 @@ export function FlatGantt() {
                 <RowLabel key={row.id} row={row} state={state} />
               ))}
             </div>
+            <div style={{ position: "relative", width, height: svgHeight }}>
             <svg ref={svgRef} width={width} height={svgHeight}>
               <defs>
                 <pattern id="revhatch" width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
@@ -238,29 +334,16 @@ export function FlatGantt() {
               {milestoneRows.map((row) => {
                 const m = milestoneById[row.milestoneId!];
                 if (!m) return null;
-                const gatingBars = ctx.tasks
-                  .filter((t) => t.milestone === m.id)
-                  .map((t) => {
-                    const uids = ctx.taskUnits[t.id];
-                    const uid = uids.length ? uids[uids.length - 1] : t.id;
-                    const barRow = rowByUid[uid];
-                    if (!barRow) return null;
-                    const s = resolveBar(sched, uid);
-                    return barPosForRow(ctx.t0, barRow, s.start, s.durationDays);
-                  })
-                  .filter((x): x is NonNullable<typeof x> => !!x);
                 return (
                   <MilestoneDiamond
                     key={m.id}
                     milestone={m}
                     t0={ctx.t0}
-                    gatingBarPositions={gatingBars}
                     chartHeight={svgHeight}
                     rowY={row.y + row.height / 2}
                   />
                 );
               })}
-              {links}
               {rows.map((row) => {
                 if (!row.uid) return null;
                 const s = resolveBar(sched, row.uid);
@@ -297,6 +380,14 @@ export function FlatGantt() {
                 );
               })}
             </svg>
+            <DependencyEdgesLayer
+              width={width}
+              height={svgHeight}
+              nodes={flowNodes}
+              edges={flowEdges}
+              onRemoveLink={state.removeLink}
+            />
+            </div>
           </div>
         </div>
         <div style={{ width: 340, overflow: "auto", padding: 12 }}>

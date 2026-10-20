@@ -10,6 +10,16 @@ import { computeSchedule, type ScheduleContext } from "@/lib/engine/schedule";
 import { addDays, diffDays, parseISO, toISO } from "@/lib/engine/date-utils";
 import type { Overlay, ScheduleResult, StepSchedule } from "@/lib/engine/types";
 import { barPosForRow, DW, type GanttRow } from "./layout";
+import { elbowPath, straightPath, type Point } from "./DependencyEdges";
+
+/** A step/task → milestone gating relationship: the milestone end is a fixed
+ * point (due dates don't move when a gating bar is dragged), so only the
+ * bar end needs re-resolving mid-drag. */
+export interface MilestoneLink {
+  uid: string;
+  milestoneId: string;
+  target: Point;
+}
 
 interface DragState {
   uid: string;
@@ -35,6 +45,7 @@ export function useBarDrag(opts: {
   asOf: string;
   baselineUnits: Record<string, StepSchedule> | null;
   rowByUid: Record<string, GanttRow>;
+  milestoneLinks: MilestoneLink[];
   onCommit: (
     uid: string,
     patch: { starts?: Record<string, string>; durations?: Record<string, number> },
@@ -59,7 +70,11 @@ export function useBarDrag(opts: {
         const grip = el.querySelector("[data-grip]");
         if (grip) grip.setAttribute("x", String(pos.w - 6));
       });
-      svg.querySelectorAll<SVGPathElement>("[data-link]").forEach((el) => {
+      // Dependency edges now render via reactflow (DependencyEdgesLayer), a
+      // sibling DOM subtree outside `svg`, so this queries the whole
+      // document rather than scoping to svgRef — same `[data-link]`
+      // attribute/id convention as before, just no longer inside this SVG.
+      document.querySelectorAll<SVGPathElement>("[data-link]").forEach((el) => {
         const [from, to] = (el.dataset.link ?? "").split(">");
         const a = opts.rowByUid[from];
         const b = opts.rowByUid[to];
@@ -68,18 +83,17 @@ export function useBarDrag(opts: {
         const sb = resolveBar(sched, to);
         const pa = barPosForRow(opts.ctx.t0, a, sa.start, sa.durationDays);
         const pb = barPosForRow(opts.ctx.t0, b, sb.start, sb.durationDays);
-        const x1 = pa.x + pa.w,
-          y1 = pa.y + pa.h / 2,
-          x2 = pb.x,
-          y2 = pb.y + pb.h / 2;
-        const mid = x1 + 8;
-        const d =
-          Math.abs(y1 - y2) < 1 && x2 >= x1
-            ? `M${x1},${y1} H${x2}`
-            : x2 >= x1 + 16
-              ? `M${x1},${y1} H${mid} V${y2} H${x2}`
-              : `M${x1},${y1} H${x1 + 8} V${(y1 + y2) / 2} H${x2 - 8} V${y2} H${x2}`;
-        el.setAttribute("d", d);
+        el.setAttribute("d", elbowPath(pa, pb));
+      });
+      opts.milestoneLinks.forEach((ml) => {
+        const el = document.querySelector<SVGPathElement>(
+          `[data-link="${CSS.escape(`${ml.uid}>>${ml.milestoneId}`)}"]`,
+        );
+        const row = opts.rowByUid[ml.uid];
+        if (!el || !row) return;
+        const s = resolveBar(sched, ml.uid);
+        const pos = barPosForRow(opts.ctx.t0, row, s.start, s.durationDays);
+        el.setAttribute("d", straightPath(pos, ml.target));
       });
     },
     [opts],
