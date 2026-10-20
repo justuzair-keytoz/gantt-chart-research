@@ -337,16 +337,16 @@ export function computeSchedule(
   ctx.milestones.forEach((m) => (msById[m.id] = m));
 
   ctx.tasks
-    .filter((t) => t.gates)
+    .filter((t) => t.milestone)
     .forEach((t) => {
       const unitUids = ctx.taskUnits[t.id];
       if (!unitUids.length) return;
       const lastUid = unitUids[unitUids.length - 1];
       const s = out[lastUid];
       const tt = tasks[t.id];
-      const m = msById[t.gates!];
+      const m = msById[t.milestone!];
       if (!m) return;
-      const gateDate = parseISO(m.date);
+      const gateDate = parseISO(m.dueDate);
       if (tt.end > gateDate) {
         s.risks.push({
           sev: asOf > gateDate ? "expired" : "critical",
@@ -428,7 +428,7 @@ export function computeSchedule(
   const wl = workload(ctx, out, sp, ov);
 
   const gateDateFor = (milestoneId: string): Date | null => {
-    const ts = ctx.tasks.filter((t) => t.gates === milestoneId);
+    const ts = ctx.tasks.filter((t) => t.milestone === milestoneId);
     if (!ts.length) return null;
     return new Date(Math.max(...ts.map((t) => tasks[t.id].end.getTime())));
   };

@@ -258,15 +258,15 @@ export const useRoadmapStore = create<RoadmapState>()(
           : null;
         const startDate = sprint ? sprint.start : get().asOf;
         const dueDate = toISO(addDays(parseISO(startDate), 2));
-        const task: TaskDef = { id, name, startDate, dueDate, gates: null, path: [] };
+        const task: TaskDef = { id, name, startDate, dueDate, milestone: null, path: [] };
         set((s) => ({ userTasks: [...s.userTasks, task] }));
         return id;
       },
 
       addMilestone: (name) => {
         const id = `MS-${Date.now().toString(36)}`;
-        const date = toISO(addDays(parseISO(get().asOf), 14));
-        const milestone: Milestone = { id, name, date, color: "#1d4ed8" };
+        const dueDate = toISO(addDays(parseISO(get().asOf), 14));
+        const milestone: Milestone = { id, name, dueDate, color: "#1d4ed8" };
         set((s) => ({ userMilestones: [...s.userMilestones, milestone] }));
         return id;
       },

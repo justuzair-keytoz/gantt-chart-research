@@ -25,8 +25,12 @@ export interface TaskDef {
   name: string;
   /** Bootstrap start date for the task's first step (ISO yyyy-mm-dd). */
   startDate: string;
-  /** Milestone id this task gates, or null. */
-  gates: string | null;
+  /**
+   * Milestone id this task gates, or null. Named to match the real Strapi
+   * Task schema's `milestone` relation (manyToOne) — see
+   * docs/gantt-chart/04-data-shape-mapping.md.
+   */
+  milestone: string | null;
   path: PathSegment[];
   /**
    * Plain-bar fallback dates, used only while path has zero steps (a task
@@ -65,7 +69,8 @@ export interface Sprint {
 export interface Milestone {
   id: string;
   name: string;
-  date: string;
+  /** Matches the real Strapi Milestone schema's `dueDate` field name. */
+  dueDate: string;
   color: string;
 }
 

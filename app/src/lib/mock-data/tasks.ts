@@ -15,11 +15,11 @@ export const MILESTONES: Milestone[] = [
   {
     id: "lcNotice",
     name: "LC non-renewal notice deadline",
-    date: "2026-10-28",
+    dueDate: "2026-10-28",
     color: "#c2410c",
   },
-  { id: "rel23", name: "Release 2.3", date: "2026-11-13", color: "#1d4ed8" },
-  { id: "cod", name: "PPA COD (contract)", date: "2026-11-20", color: "#b91c1c" },
+  { id: "rel23", name: "Release 2.3", dueDate: "2026-11-13", color: "#1d4ed8" },
+  { id: "cod", name: "PPA COD (contract)", dueDate: "2026-11-20", color: "#b91c1c" },
 ];
 
 export const BASE_TASKS: TaskDef[] = [
@@ -27,7 +27,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-160",
     name: "LC expiry rule spec",
     startDate: "2026-10-05",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "planning",
@@ -45,7 +45,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-170",
     name: "COD readiness checklist",
     startDate: "2026-10-06",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "planning",
@@ -63,7 +63,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-150",
     name: "Dependency picker",
     startDate: "2026-10-09",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "design",
@@ -82,7 +82,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-151",
     name: "Export API",
     startDate: "2026-10-09",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "design",
@@ -112,7 +112,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-161",
     name: "LC non-renewal notice",
     startDate: "2026-10-09",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "design",
@@ -131,7 +131,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-162",
     name: "Send LC notice to issuer",
     startDate: "2026-10-15",
-    gates: "lcNotice",
+    milestone: "lcNotice",
     path: [
       {
         stage: "marketing",
@@ -150,7 +150,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-142",
     name: "PPA table extraction",
     startDate: "2026-10-11",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "development",
@@ -169,7 +169,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-173",
     name: "Dependency picker build",
     startDate: "2026-10-13",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "development",
@@ -188,7 +188,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-139",
     name: "Filters panel",
     startDate: "2026-10-22",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "development",
@@ -207,7 +207,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-171",
     name: "LGIA in-service confirmation",
     startDate: "2026-10-20",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "development",
@@ -226,7 +226,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-180",
     name: "Release 2.3 notes",
     startDate: "2026-10-29",
-    gates: "rel23",
+    milestone: "rel23",
     path: [
       {
         stage: "marketing",
@@ -245,7 +245,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-172",
     name: "Lender COD certificate",
     startDate: "2026-10-29",
-    gates: "cod",
+    milestone: "cod",
     path: [
       {
         stage: "development",
@@ -274,7 +274,7 @@ export const BASE_TASKS: TaskDef[] = [
     id: "OAK-181",
     name: "Investor update deck",
     startDate: "2026-11-11",
-    gates: null,
+    milestone: null,
     path: [
       {
         stage: "marketing",

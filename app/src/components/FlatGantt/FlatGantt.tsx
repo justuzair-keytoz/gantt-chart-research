@@ -34,6 +34,7 @@ import {
   barPosForRow,
   buildRows,
   linkPath,
+  milestoneBands,
   xForDate,
   type GanttRow,
 } from "./layout";
@@ -176,6 +177,7 @@ export function FlatGantt() {
   });
 
   const allIds = useMemo(() => allCollapsibleIds(rows), [rows]);
+  const milestoneBand = useMemo(() => milestoneBands(ctx.milestones), [ctx.milestones]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -231,7 +233,7 @@ export function FlatGantt() {
               )}
               {ctx.milestones.map((m) => {
                 const gatingBars = ctx.tasks
-                  .filter((t) => t.gates === m.id)
+                  .filter((t) => t.milestone === m.id)
                   .map((t) => {
                     const uids = ctx.taskUnits[t.id];
                     const uid = uids.length ? uids[uids.length - 1] : t.id;
@@ -248,6 +250,7 @@ export function FlatGantt() {
                     t0={ctx.t0}
                     gatingBarPositions={gatingBars}
                     chartHeight={svgHeight}
+                    band={milestoneBand[m.id] ?? 0}
                   />
                 );
               })}
