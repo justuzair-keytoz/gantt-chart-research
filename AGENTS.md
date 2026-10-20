@@ -16,6 +16,10 @@ Research and a prototype for a Gantt/roadmap-simulation feature that may eventua
 
 **Spec changes are versioned, not edited in place.** A spec folder under `docs/gantt-chart/spec/vN/` is a frozen snapshot once the next version exists. Full convention, including when to cut a new version: [`docs/gantt-chart/spec/INDEX.md`](./docs/gantt-chart/spec/INDEX.md).
 
+**Implementation work happens as tickets, broken down from that version's `spec.md`, not ad hoc.** Use the `to-tickets` skill against `docs/gantt-chart/spec/vN/spec.md` to produce vertical-slice tickets under `docs/gantt-chart/spec/vN/tickets/` (one file per ticket, numbered in dependency order, each declaring what blocks it — see the skill for the exact template). Present the draft breakdown for approval before writing the ticket files; don't publish a breakdown nobody's reviewed.
+
+**Every versioned spec folder keeps its own `CHANGELOG.md`.** As a ticket gets implemented, add an entry naming the ticket it closes, what it actually changed, and what existed before it that got replaced or fixed — not a vague "did some work" line. This is the thing that makes "what shipped against this version's plan" answerable without reading every commit by hand.
+
 **A decision that gets reversed says so, in writing, where the reversal happens.** Don't silently rewrite an earlier decision to look like it was always this way. See the "Further Notes" section of [`docs/gantt-chart/spec/v1/spec.md`](./docs/gantt-chart/spec/v1/spec.md) for the pattern already in use — each reversal is named, with why.
 
 **Dependencies get reused and pinned exactly, not added loosely.** Before adding anything to `app/`, check whether the real app (`databonder-enterprise-search`) already has it, at what version, and reuse that version exactly. If something is genuinely new, document it with why. Full policy and the exact pinned versions: [`docs/gantt-chart/spec/v1/app-dependencies-and-config.md`](./docs/gantt-chart/spec/v1/app-dependencies-and-config.md).
