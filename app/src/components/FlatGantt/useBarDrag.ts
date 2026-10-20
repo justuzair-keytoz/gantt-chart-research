@@ -10,7 +10,8 @@ import { computeSchedule, type ScheduleContext } from "@/lib/engine/schedule";
 import { addDays, diffDays, parseISO, toISO } from "@/lib/engine/date-utils";
 import type { Overlay, ScheduleResult, StepSchedule } from "@/lib/engine/types";
 import { barPosForRow, DW, type GanttRow } from "./layout";
-import { elbowPath, straightPath, type Point } from "./DependencyEdges";
+import { elbowPath, milestonePath, type Point } from "./DependencyEdges";
+import { resolveVisibleRow } from "./resolveLinkEndpoint";
 
 /** A step/task → milestone gating relationship: the milestone end is a fixed
  * point (due dates don't move when a gating bar is dragged), so only the
@@ -29,6 +30,48 @@ interface DragState {
   baseDur: number;
   lastDays: number;
   moved: boolean;
+  /** The dragged unit's task, and the boundaries that cap how far it can
+   * move — per spec.md's drag-cap notes. Every drag is capped at the
+   * chart's own visible date range (chartStart/chartEnd) — dragging past it
+   * used to silently clip the bar out of view (the SVG's default
+   * overflow:hidden) with the date still committed, which is how a task
+   * could "disappear" with no explanation. A task whose task also gates a
+   * milestone is additionally capped at that milestone's due date,
+   * whichever boundary is hit first. */
+  taskId: string;
+  gateDueDate: Date | null;
+  chartStart: Date;
+  chartEnd: Date;
+  /** Third boundary: dragging a non-last step of a multi-step task must not
+   * push the task's own rolled-up end past where it sat before the drag
+   * started — null when the dragged uid IS the task's last step (or has no
+   * later sibling at all), since then there's nothing downstream to protect
+   * and moving the task's real end is legitimate, governed by the other two
+   * boundaries instead. */
+  taskSpanEnd: Date | null;
+  lastSafeDays: number;
+  violated: boolean;
+  /** Whether the CURRENT freeze is specifically caused by taskSpanEnd (vs.
+   * the gate/chart boundaries) — drives the sibling-link clash indicator
+   * independently of the dragged bar's own (always-on-any-boundary) outline. */
+  taskSpanViolated: boolean;
+  /** `data-link` id of the edge to the immediate next sibling step
+   * (`prevUid === uid`), i.e. the chain link this boundary is protecting —
+   * null when taskSpanEnd is null. */
+  clashLinkId: string | null;
+  /** The dragged bar's stroke attributes as they were before the drag
+   * started — restored exactly when a violation clears, instead of being
+   * blindly cleared (which would erase an unrelated pre-existing risk
+   * outline the bar already had). */
+  origStroke: string | null;
+  origStrokeWidth: string | null;
+  origStrokeDasharray: string | null;
+  /** Same capture, for the clash-link path element — null when clashLinkId
+   * is null or the edge isn't currently rendered (e.g. merged into a
+   * collapsed ancestor's group line). */
+  origLinkStroke: string | null;
+  origLinkStrokeWidth: string | null;
+  origLinkStrokeDasharray: string | null;
 }
 
 export function resolveBar(sched: ScheduleResult, uid: string): { start: Date; end: Date; durationDays: number } {
@@ -47,6 +90,8 @@ export function useBarDrag(opts: {
   asOf: string;
   baselineUnits: Record<string, StepSchedule> | null;
   rowByUid: Record<string, GanttRow>;
+  /** All rows keyed by row id — used to climb to a hidden link endpoint's nearest visible ancestor row (collapsed sprint/task), same resolution as flowEdges in FlatGantt.tsx. */
+  rowsById: Record<string, GanttRow>;
   milestoneLinks: MilestoneLink[];
   onCommit: (
     uid: string,
@@ -58,7 +103,7 @@ export function useBarDrag(opts: {
   const dragRef = useRef<DragState | null>(null);
 
   const paintFrame = useCallback(
-    (sched: ScheduleResult) => {
+    (sched: ScheduleResult, violation?: { uid: string; violated: boolean }) => {
       const svg = opts.svgRef.current;
       if (!svg) return;
       Object.entries(opts.rowByUid).forEach(([uid, row]) => {
@@ -79,10 +124,57 @@ export function useBarDrag(opts: {
       // before, just no longer inside this SVG.
       const chart = opts.chartRef.current;
       if (!chart) return;
+      if (violation) {
+        const drag = dragRef.current;
+        const el = svg.querySelector<SVGGElement>(`[data-bar="${CSS.escape(violation.uid)}"]`);
+        const body = el?.querySelector<SVGRectElement>("rect.body");
+        if (body && drag) {
+          if (violation.violated) {
+            body.setAttribute("stroke", "var(--crit)");
+            body.setAttribute("stroke-width", "2.5");
+            body.setAttribute("stroke-dasharray", "4 2");
+          } else {
+            drag.origStroke ? body.setAttribute("stroke", drag.origStroke) : body.removeAttribute("stroke");
+            drag.origStrokeWidth
+              ? body.setAttribute("stroke-width", drag.origStrokeWidth)
+              : body.removeAttribute("stroke-width");
+            drag.origStrokeDasharray
+              ? body.setAttribute("stroke-dasharray", drag.origStrokeDasharray)
+              : body.removeAttribute("stroke-dasharray");
+          }
+        }
+        // Third boundary's own indicator: the specific sibling chain link
+        // being encroached on, not the dragged bar itself — only touched
+        // when taskSpanEnd is what's actually being violated this frame (the
+        // dragged bar's outline above already covers the gate/chart cases).
+        if (drag?.clashLinkId) {
+          const linkEl = chart.querySelector<SVGPathElement>(`[data-link="${CSS.escape(drag.clashLinkId)}"]`);
+          if (linkEl) {
+            if (drag.taskSpanViolated) {
+              linkEl.setAttribute("stroke", "var(--crit)");
+              linkEl.setAttribute("stroke-width", "1.5");
+              linkEl.setAttribute("stroke-dasharray", "3 3");
+            } else {
+              drag.origLinkStroke
+                ? linkEl.setAttribute("stroke", drag.origLinkStroke)
+                : linkEl.removeAttribute("stroke");
+              drag.origLinkStrokeWidth
+                ? linkEl.setAttribute("stroke-width", drag.origLinkStrokeWidth)
+                : linkEl.removeAttribute("stroke-width");
+              drag.origLinkStrokeDasharray
+                ? linkEl.setAttribute("stroke-dasharray", drag.origLinkStrokeDasharray)
+                : linkEl.removeAttribute("stroke-dasharray");
+            }
+          }
+        }
+      }
       chart.querySelectorAll<SVGPathElement>("[data-link]").forEach((el) => {
         const [from, to] = (el.dataset.link ?? "").split(">");
-        const a = opts.rowByUid[from];
-        const b = opts.rowByUid[to];
+        // Climb to the nearest visible ancestor row exactly like flowEdges
+        // does when building the static edge list — keeps a dragged bar's
+        // merged-into-parent line glued to the right row even mid-drag.
+        const a = resolveVisibleRow(from, opts.ctx, sched, opts.rowByUid, opts.rowsById);
+        const b = resolveVisibleRow(to, opts.ctx, sched, opts.rowByUid, opts.rowsById);
         if (!a || !b) return;
         const sa = resolveBar(sched, from);
         const sb = resolveBar(sched, to);
@@ -94,12 +186,25 @@ export function useBarDrag(opts: {
         const el = chart.querySelector<SVGPathElement>(
           `[data-link="${CSS.escape(`${ml.uid}>>${ml.milestoneId}`)}"]`,
         );
-        const row = opts.rowByUid[ml.uid];
+        const row = resolveVisibleRow(ml.uid, opts.ctx, sched, opts.rowByUid, opts.rowsById);
         if (!el || !row) return;
         const s = resolveBar(sched, ml.uid);
         const pos = barPosForRow(opts.ctx.t0, row, s.start, s.durationDays);
-        el.setAttribute("d", straightPath(pos, ml.target));
+        el.setAttribute("d", milestonePath(pos, ml.target.x, ml.target));
       });
+    },
+    [opts],
+  );
+
+  const applyDays = useCallback(
+    (drag: DragState, days: number): Overlay => {
+      const ov: Overlay = JSON.parse(JSON.stringify(opts.getOverlay()));
+      if (drag.kind === "move") {
+        ov.starts[drag.uid] = toISO(addDays(parseISO(drag.baseStartISO), days));
+      } else {
+        ov.durations[drag.uid] = Math.max(1, drag.baseDur + days);
+      }
+      return ov;
     },
     [opts],
   );
@@ -111,19 +216,53 @@ export function useBarDrag(opts: {
       const days = Math.round((e.clientX - drag.x0) / DW);
       if (!drag.moved && Math.abs(e.clientX - drag.x0) < 3) return;
       drag.moved = true;
-      if (days === drag.lastDays) return;
-      drag.lastDays = days;
 
-      const ov: Overlay = JSON.parse(JSON.stringify(opts.getOverlay()));
-      if (drag.kind === "move") {
-        ov.starts[drag.uid] = toISO(addDays(parseISO(drag.baseStartISO), days));
+      const testSched = computeSchedule(opts.ctx, applyDays(drag, days), opts.asOf, opts.baselineUnits);
+      const testTask = testSched.tasks[drag.taskId];
+      const taskSpanExceeded =
+        !!testTask && drag.taskSpanEnd !== null && testTask.end > drag.taskSpanEnd;
+      const exceeds =
+        !!testTask &&
+        ((drag.gateDueDate !== null && testTask.end > drag.gateDueDate) ||
+          testTask.end > drag.chartEnd ||
+          testTask.start < drag.chartStart ||
+          taskSpanExceeded);
+
+      let effectiveDays = days;
+      let violated = false;
+      let taskSpanViolated = false;
+      let schedToUse = testSched;
+      if (exceeds) {
+        // Past a boundary (the milestone gate, the chart's own visible date
+        // range, or — new — a non-last step's own task span) — freeze at the
+        // last position that wasn't, rather than letting the push cascade
+        // past it unbounded or clip the bar out of the visible chart with no
+        // explanation.
+        effectiveDays = drag.lastSafeDays;
+        violated = true;
+        taskSpanViolated = taskSpanExceeded;
+        if (
+          effectiveDays === drag.lastDays &&
+          violated === drag.violated &&
+          taskSpanViolated === drag.taskSpanViolated
+        )
+          return;
+        schedToUse = computeSchedule(opts.ctx, applyDays(drag, effectiveDays), opts.asOf, opts.baselineUnits);
       } else {
-        ov.durations[drag.uid] = Math.max(1, drag.baseDur + days);
+        drag.lastSafeDays = days;
+        if (
+          effectiveDays === drag.lastDays &&
+          violated === drag.violated &&
+          taskSpanViolated === drag.taskSpanViolated
+        )
+          return;
       }
-      const sched = computeSchedule(opts.ctx, ov, opts.asOf, opts.baselineUnits);
-      paintFrame(sched);
+      drag.lastDays = effectiveDays;
+      drag.violated = violated;
+      drag.taskSpanViolated = taskSpanViolated;
+      paintFrame(schedToUse, { uid: drag.uid, violated });
     },
-    [opts, paintFrame],
+    [opts, paintFrame, applyDays],
   );
 
   const handleUp = useCallback(() => {
@@ -158,6 +297,27 @@ export function useBarDrag(opts: {
       e.preventDefault();
       const sched = computeSchedule(opts.ctx, opts.getOverlay(), opts.asOf, opts.baselineUnits);
       const s = resolveBar(sched, uid);
+
+      const step = opts.ctx.stepByUid[uid];
+      const taskId = step ? step.taskId : uid;
+      const task = opts.ctx.taskById[taskId];
+      const milestone = task?.milestone ? opts.ctx.milestones.find((m) => m.id === task.milestone) : null;
+
+      const el = opts.svgRef.current?.querySelector<SVGGElement>(`[data-bar="${CSS.escape(uid)}"]`);
+      const body = el?.querySelector<SVGRectElement>("rect.body");
+
+      // Third boundary: only applies to a step that has a later sibling in
+      // the same task's chain (another step whose prevUid === uid) — the
+      // task's last step (or a plain single-step/no-step task) has nothing
+      // downstream to protect, so taskSpanEnd stays null and this drag is
+      // governed only by the gate/chart boundaries, same as before.
+      const nextSibling = step ? opts.ctx.steps.find((s2) => s2.prevUid === uid) : undefined;
+      const taskSpanEnd = nextSibling ? sched.tasks[taskId].end : null;
+      const clashLinkId = nextSibling ? `${uid}>${nextSibling.uid}` : null;
+      const linkEl = clashLinkId
+        ? opts.chartRef.current?.querySelector<SVGPathElement>(`[data-link="${CSS.escape(clashLinkId)}"]`)
+        : null;
+
       dragRef.current = {
         uid,
         kind,
@@ -166,6 +326,21 @@ export function useBarDrag(opts: {
         baseDur: s.durationDays,
         lastDays: 0,
         moved: false,
+        taskId,
+        gateDueDate: milestone ? parseISO(milestone.dueDate) : null,
+        chartStart: opts.ctx.t0,
+        chartEnd: addDays(opts.ctx.t0, opts.ctx.days - 1),
+        taskSpanEnd,
+        lastSafeDays: 0,
+        violated: false,
+        taskSpanViolated: false,
+        clashLinkId,
+        origStroke: body?.getAttribute("stroke") ?? null,
+        origStrokeWidth: body?.getAttribute("stroke-width") ?? null,
+        origStrokeDasharray: body?.getAttribute("stroke-dasharray") ?? null,
+        origLinkStroke: linkEl?.getAttribute("stroke") ?? null,
+        origLinkStrokeWidth: linkEl?.getAttribute("stroke-width") ?? null,
+        origLinkStrokeDasharray: linkEl?.getAttribute("stroke-dasharray") ?? null,
       };
       window.addEventListener("pointermove", handleMove);
       window.addEventListener("pointerup", handleUp, { once: true });
