@@ -34,7 +34,6 @@ import {
   barPosForRow,
   buildRows,
   linkPath,
-  milestoneBands,
   xForDate,
   type GanttRow,
 } from "./layout";
@@ -177,7 +176,12 @@ export function FlatGantt() {
   });
 
   const allIds = useMemo(() => allCollapsibleIds(rows), [rows]);
-  const milestoneBand = useMemo(() => milestoneBands(ctx.milestones), [ctx.milestones]);
+  const milestoneRows = useMemo(() => rows.filter((r) => r.kind === "milestone"), [rows]);
+  const milestoneById = useMemo(() => {
+    const m: Record<string, (typeof ctx.milestones)[number]> = {};
+    ctx.milestones.forEach((ms) => (m[ms.id] = ms));
+    return m;
+  }, [ctx.milestones]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -231,16 +235,18 @@ export function FlatGantt() {
                   />
                 ) : null,
               )}
-              {ctx.milestones.map((m) => {
+              {milestoneRows.map((row) => {
+                const m = milestoneById[row.milestoneId!];
+                if (!m) return null;
                 const gatingBars = ctx.tasks
                   .filter((t) => t.milestone === m.id)
                   .map((t) => {
                     const uids = ctx.taskUnits[t.id];
                     const uid = uids.length ? uids[uids.length - 1] : t.id;
-                    const row = rowByUid[uid];
-                    if (!row) return null;
+                    const barRow = rowByUid[uid];
+                    if (!barRow) return null;
                     const s = resolveBar(sched, uid);
-                    return barPosForRow(ctx.t0, row, s.start, s.durationDays);
+                    return barPosForRow(ctx.t0, barRow, s.start, s.durationDays);
                   })
                   .filter((x): x is NonNullable<typeof x> => !!x);
                 return (
@@ -250,7 +256,7 @@ export function FlatGantt() {
                     t0={ctx.t0}
                     gatingBarPositions={gatingBars}
                     chartHeight={svgHeight}
-                    band={milestoneBand[m.id] ?? 0}
+                    rowY={row.y + row.height / 2}
                   />
                 );
               })}
