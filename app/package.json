@@ -1,6 +1,7 @@
 {
   "name": "gantt-roadmap-sim",
-  "version": "0.0.1",
+  "version": "0.1.0",
+  "description": "v0 — standalone prototype ported from ../prototype/. See ./README.md and docs/gantt-chart/spec/v1/ in the repo root.",
   "private": true,
   "scripts": {
     "dev": "next dev -p 4000",
@@ -34,5 +35,6 @@
     "@types/react": "18",
     "@types/react-dom": "18",
     "@types/node": "20"
-  }
+  },
+  "packageManager": "yarn@4.6.0+sha512.5383cc12567a95f1d668fbe762dfe0075c595b4bfff433be478dbbe24e05251a8e8c3eb992a986667c1d53b6c3a9c85b8398c35a960587fbd9fa3a0915406728"
 }
