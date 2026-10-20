@@ -1,17 +1,20 @@
 "use client";
 
-// Milestones render as a diamond with dashed connector lines from each
-// gating task, using the milestone's own stored `color` (not a fixed
-// palette) — per docs/gantt-chart/02-spec-roadmap-simulation.md.
+// Milestones render as a diamond with a vertical dashed guide line, using
+// the milestone's own stored `color` (not a fixed palette) — per
+// docs/gantt-chart/02-spec-roadmap-simulation.md. The dashed connector
+// lines from each gating task used to be drawn here too (inline SVG paths);
+// they now draw via the shared reactflow mechanism in DependencyEdges.tsx —
+// see FlatGantt.tsx's milestone edge-building — so this component only
+// owns the diamond shape, the guide line, and the label.
 
 import { parseISO, fmt } from "@/lib/engine/date-utils";
 import type { Milestone as MilestoneType } from "@/lib/engine/types";
-import { AXIS_H, xForDate, type BarPos } from "./layout";
+import { AXIS_H, xForDate } from "./layout";
 
 export function MilestoneDiamond(props: {
   milestone: MilestoneType;
   t0: Date;
-  gatingBarPositions: BarPos[];
   chartHeight: number;
   /** Center-y of the milestone's own row (from the row tree, like any other row). */
   rowY: number;
@@ -32,16 +35,6 @@ export function MilestoneDiamond(props: {
         strokeWidth={1}
         opacity={0.5}
       />
-      {props.gatingBarPositions.map((pos, i) => (
-        <path
-          key={i}
-          d={`M${pos.x + pos.w},${pos.y + pos.h / 2} L${x},${y}`}
-          stroke={props.milestone.color}
-          strokeDasharray="4 3"
-          strokeWidth={1.5}
-          fill="none"
-        />
-      ))}
       <rect
         x={x - size}
         y={y - size}
