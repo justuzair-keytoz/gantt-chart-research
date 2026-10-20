@@ -249,6 +249,15 @@ export function computeSchedule(
     );
     let pushedBy: string | null = null;
     deps[uid].forEach((p) => {
+      // `out[p]` can be missing here for two reasons, neither of which
+      // should crash the whole schedule: (1) a dangling link left over from
+      // stale persisted overlay/base state pointing at a uid that no longer
+      // exists in ctx.steps, or (2) a cycle in the link graph, which makes
+      // topo() return null and fall back to ctx.steps' raw (non-topological)
+      // order, so a dependency can land after its dependent. Either way, a
+      // not-yet-computed predecessor just can't push this step's start this
+      // pass — skip it rather than throw.
+      if (!out[p]) return;
       const pe = addDays(out[p].end, 1);
       if (pe > start) {
         start = pe;
