@@ -1,0 +1,93 @@
+{
+  "_note": "v1 seed dataset — supersedes the v0 snapshot at ./v0.json. Loaded by tasks.ts, which re-exports it as the typed BASE_SPRINTS/MILESTONES/BASE_TASKS/BASE_LINKS the rest of the app already consumes. Design intent (full writeup: docs/gantt-chart/spec/v1/CHANGELOG.md): each milestone sits right after the sprint cluster that feeds it, not all bunched near the end. Every computed date below was verified by hand-tracing the real stepEnd()/computeSchedule() working-day math, not assumed — the actual severity mix that fell out of that tracing: scopeSignoff and rel23 land as warning-tier (a few days of float, not violated); lcNotice's gating task (OAK-162) deliberately overruns it by 1 day (critical/broken-red-line demo); cod has two gating tasks — OAK-172 lands clean well ahead of its due date (the 'future, not yet urgent' case), OAK-190 lands warning-tier (cutting it close but not violated). OAK-171/OAK-172/OAK-181 each depend on more than one other sprint's steps at once, to exercise the multi-fan-in merge-on-collapse rendering. OAK-172/OAK-190/OAK-181 spill past Sprint 8 into the new Sprint 9 — a real sprint, not the Unscheduled bucket, so this content doesn't require 'Expand all' to find.",
+  "sprints": [
+    { "id": "s5", "name": "Sprint 5", "start": "2026-10-05", "end": "2026-10-16" },
+    { "id": "s6", "name": "Sprint 6", "start": "2026-10-19", "end": "2026-10-30" },
+    { "id": "s7", "name": "Sprint 7", "start": "2026-11-02", "end": "2026-11-13" },
+    { "id": "s8", "name": "Sprint 8", "start": "2026-11-16", "end": "2026-11-27" },
+    { "id": "s9", "name": "Sprint 9", "start": "2026-11-30", "end": "2026-12-11" }
+  ],
+  "milestones": [
+    { "id": "scopeSignoff", "name": "Scope & design sign-off", "dueDate": "2026-10-19", "color": "#15803d" },
+    { "id": "lcNotice", "name": "LC non-renewal notice deadline", "dueDate": "2026-11-02", "color": "#c2410c" },
+    { "id": "rel23", "name": "Release 2.3", "dueDate": "2026-11-25", "color": "#1d4ed8" },
+    { "id": "cod", "name": "PPA COD (contract)", "dueDate": "2026-12-10", "color": "#b91c1c" }
+  ],
+  "tasks": [
+    { "id": "OAK-160", "name": "LC expiry rule spec", "startDate": "2026-10-05", "milestone": null,
+      "path": [{ "stage": "planning", "assignee": "ana", "reviewer": "moiz", "stakeholders": ["CFO"],
+        "steps": [["scope", 3], ["review", 1]] }] },
+    { "id": "OAK-170", "name": "COD readiness checklist", "startDate": "2026-10-06", "milestone": null,
+      "path": [{ "stage": "planning", "assignee": "moiz", "reviewer": "ana", "stakeholders": ["Lender", "Client PM"],
+        "steps": [["scope", 4], ["review", 1]] }] },
+
+    { "id": "OAK-150", "name": "Dependency picker", "startDate": "2026-10-09", "milestone": "scopeSignoff",
+      "path": [{ "stage": "design", "assignee": "lee", "reviewer": "ana", "stakeholders": ["Client PM"],
+        "steps": [["design", 3], ["review", 1], ["docs", 1]] }] },
+    { "id": "OAK-151", "name": "Export API", "startDate": "2026-10-09", "milestone": null,
+      "path": [
+        { "stage": "design", "assignee": "ana", "reviewer": "lee", "stakeholders": ["Client PM"],
+          "steps": [["design", 3], ["review", 1], ["docs", 1]] },
+        { "stage": "development", "assignee": "ravi", "reviewer": "sam", "stakeholders": ["Client PM"],
+          "steps": [["build", 5], ["qa", 2], ["release", 1]] }
+      ] },
+
+    { "id": "OAK-161", "name": "LC non-renewal notice", "startDate": "2026-10-19", "milestone": null,
+      "path": [{ "stage": "design", "assignee": "sam", "reviewer": "ana", "stakeholders": ["CFO", "Issuing bank"],
+        "steps": [["design", 3], ["copy", 2], ["review", 1]] }] },
+    { "id": "OAK-162", "name": "Send LC notice to issuer", "startDate": "2026-10-22", "milestone": "lcNotice",
+      "path": [{ "stage": "marketing", "assignee": "sam", "reviewer": "ana", "stakeholders": ["Issuing bank", "CFO"],
+        "steps": [["draft", 4], ["review", 1], ["send", 1]] }] },
+    { "id": "OAK-142", "name": "PPA table extraction", "startDate": "2026-10-20", "milestone": null,
+      "path": [{ "stage": "development", "assignee": "ravi", "reviewer": "sam", "stakeholders": ["Client PM"],
+        "steps": [["build", 7], ["qa", 2], ["release", 1]] }] },
+    { "id": "OAK-171", "name": "LGIA in-service confirmation", "startDate": "2026-10-22", "milestone": null,
+      "path": [{ "stage": "development", "assignee": "moiz", "reviewer": "sam", "stakeholders": ["Lender", "Utility"],
+        "steps": [["build", 6], ["qa", 2], ["release", 1]] }] },
+
+    { "id": "OAK-173", "name": "Dependency picker build", "startDate": "2026-11-03", "milestone": null,
+      "path": [{ "stage": "development", "assignee": "lee", "reviewer": "sam", "stakeholders": [],
+        "steps": [["build", 5], ["qa", 2], ["release", 1]] }] },
+    { "id": "OAK-139", "name": "Filters panel", "startDate": "2026-11-05", "milestone": null,
+      "path": [{ "stage": "development", "assignee": "ravi", "reviewer": "sam", "stakeholders": ["Client PM"],
+        "steps": [["build", 4], ["qa", 2], ["release", 1]] }] },
+    { "id": "OAK-180", "name": "Release 2.3 notes", "startDate": "2026-11-09", "milestone": "rel23",
+      "path": [{ "stage": "marketing", "assignee": "lee", "reviewer": "ana", "stakeholders": ["Client PM"],
+        "steps": [["draft", 3], ["review", 1], ["send", 1]] }] },
+
+    { "id": "OAK-172", "name": "Lender COD certificate", "startDate": "2026-11-16", "milestone": "cod",
+      "path": [
+        { "stage": "development", "assignee": "moiz", "reviewer": "sam", "stakeholders": ["Lender"],
+          "steps": [["build", 4], ["qa", 2]] },
+        { "stage": "marketing", "assignee": "ana", "reviewer": "moiz", "stakeholders": ["Lender", "CFO"],
+          "steps": [["draft", 4], ["review", 2], ["send", 1]] }
+      ] },
+    { "id": "OAK-181", "name": "Investor update deck", "startDate": "2026-11-20", "milestone": null,
+      "path": [{ "stage": "marketing", "assignee": "sam", "reviewer": "ana", "stakeholders": ["Investors", "CFO"],
+        "steps": [["draft", 3], ["review", 1], ["send", 1]] }] },
+    { "id": "OAK-190", "name": "Final lender sign-off", "startDate": "2026-11-23", "milestone": "cod",
+      "path": [{ "stage": "marketing", "assignee": "priya", "reviewer": "sam", "stakeholders": ["Lender", "CFO"],
+        "steps": [["draft", 2], ["review", 2], ["send", 1]] }] }
+  ],
+  "links": [
+    ["OAK-160:planning:review", "OAK-150:design:design"],
+    ["OAK-160:planning:review", "OAK-151:design:design"],
+    ["OAK-160:planning:review", "OAK-161:design:design"],
+
+    ["OAK-170:planning:review", "OAK-142:development:build"],
+    ["OAK-170:planning:review", "OAK-171:development:build"],
+    ["OAK-142:development:qa", "OAK-171:development:build"],
+    ["OAK-161:design:review", "OAK-162:marketing:draft"],
+
+    ["OAK-150:design:review", "OAK-173:development:build"],
+    ["OAK-151:development:release", "OAK-139:development:build"],
+    ["OAK-139:development:release", "OAK-180:marketing:draft"],
+    ["OAK-173:development:release", "OAK-180:marketing:draft"],
+
+    ["OAK-171:development:release", "OAK-172:development:build"],
+    ["OAK-142:development:release", "OAK-172:development:build"],
+    ["OAK-172:marketing:send", "OAK-181:marketing:draft"],
+    ["OAK-180:marketing:send", "OAK-181:marketing:draft"],
+    ["OAK-172:marketing:send", "OAK-190:marketing:draft"]
+  ]
+}
