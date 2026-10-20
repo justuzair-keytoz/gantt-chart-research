@@ -20,6 +20,8 @@ Research and a prototype for a Gantt/roadmap-simulation feature that may eventua
 
 **Every versioned spec folder keeps its own `CHANGELOG.md`.** As a ticket gets implemented, add an entry naming the ticket it closes, what it actually changed, and what existed before it that got replaced or fixed — not a vague "did some work" line. This is the thing that makes "what shipped against this version's plan" answerable without reading every commit by hand.
 
+**Use the `implement-spec` skill (`.agents/skills/implement-spec/`) to actually build a version's tickets once they're approved.** Don't improvise a different implementation process — that skill's task-graph-and-frontier approach is what the tickets' blocking edges are written for in the first place.
+
 **A decision that gets reversed says so, in writing, where the reversal happens.** Don't silently rewrite an earlier decision to look like it was always this way. See the "Further Notes" section of [`docs/gantt-chart/spec/v1/spec.md`](./docs/gantt-chart/spec/v1/spec.md) for the pattern already in use — each reversal is named, with why.
 
 **Dependencies get reused and pinned exactly, not added loosely.** Before adding anything to `app/`, check whether the real app (`databonder-enterprise-search`) already has it, at what version, and reuse that version exactly. If something is genuinely new, document it with why. Full policy and the exact pinned versions: [`docs/gantt-chart/spec/v1/app-dependencies-and-config.md`](./docs/gantt-chart/spec/v1/app-dependencies-and-config.md).
