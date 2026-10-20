@@ -13,6 +13,12 @@ export const fmt = (dt: Date): string =>
 export const addDays = (dt: Date, n: number): Date =>
   new Date(dt.getTime() + n * DAY);
 
+export const addMonths = (dt: Date, n: number): Date => {
+  const d = new Date(dt);
+  d.setMonth(d.getMonth() + n);
+  return d;
+};
+
 /** Working-day-aware helper: is this a Saturday/Sunday. */
 export const isWeekend = (dt: Date): boolean => {
   const wd = dt.getDay();

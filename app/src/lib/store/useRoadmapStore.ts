@@ -55,7 +55,6 @@ export interface RoadmapState extends RoadmapPersistedState {
 
   activeScenario: () => Scenario;
   ensureScenario: () => Scenario;
-  newScenario: () => Scenario;
   setActive: (id: string) => void;
   resetScenario: () => void;
   undo: () => void;
@@ -81,22 +80,37 @@ export interface RoadmapState extends RoadmapPersistedState {
   commitScenario: (reason: string) => void;
 }
 
-const BASE_SCENARIO: Scenario = {
-  id: "base",
-  name: "Baseline",
-  locked: true,
+// Scenario auto-creation is disabled for v1 — see spec.md's "Correction,
+// scenario creation disabled" note. A single always-unlocked working
+// scenario replaces the old locked-Baseline + ensureScenario()-spawns-a-new-
+// one-per-edit model: edits always land in this one scenario directly, so
+// there's exactly one place to look for "what am I changing right now."
+const WORKING_SCENARIO: Scenario = {
+  id: "working",
+  name: "Working",
+  locked: false,
   ov: emptyOverlay(),
   history: [],
 };
 
+function freshWorkingScenario(): Scenario {
+  return { ...WORKING_SCENARIO, ov: emptyOverlay(), history: [] };
+}
+
 export const useRoadmapStore = create<RoadmapState>()(
   persist(
     (set, get) => ({
-      scenarios: [BASE_SCENARIO],
-      active: "base",
+      scenarios: [WORKING_SCENARIO],
+      active: "working",
       asOf: "2026-10-10",
       decisions: [],
-      expanded: ["OAK-151", "OAK-162", "OAK-172"],
+      // Real row ids for a task with steps are "<sprintId>::<taskId>", not a
+      // bare task id (and sprint assignment itself is computed from the
+      // schedule, not a static field) — this list used to hold bare task
+      // ids ("OAK-151", ...) that never matched anything, so nothing was
+      // ever expanded by default. Defaulting to the sprint ids themselves
+      // (stable, not schedule-dependent) actually opens the sprints instead.
+      expanded: ["s5", "s6", "s7", "s8", "s9"],
       userTasks: [],
       userMilestones: [],
       taskStepOverrides: {},
@@ -110,31 +124,13 @@ export const useRoadmapStore = create<RoadmapState>()(
 
       activeScenario: () => {
         const s = get();
-        return s.scenarios.find((sc) => sc.id === s.active) ?? BASE_SCENARIO;
+        return s.scenarios.find((sc) => sc.id === s.active) ?? WORKING_SCENARIO;
       },
 
-      ensureScenario: () => {
-        const sc = get().activeScenario();
-        if (!sc.locked) return sc;
-        const created = get().newScenario();
-        notifications.show({
-          message: `Baseline is the current plan. Created ${created.name} so you can experiment.`,
-        });
-        return created;
-      },
-
-      newScenario: () => {
-        const n = get().scenarios.length;
-        const sc: Scenario = {
-          id: `sc${Date.now().toString(36)}`,
-          name: `Scenario ${String.fromCharCode(64 + n)}`,
-          locked: false,
-          ov: emptyOverlay(),
-          history: [],
-        };
-        set((s) => ({ scenarios: [...s.scenarios, sc], active: sc.id }));
-        return sc;
-      },
+      // No longer spawns a new scenario — there is exactly one working
+      // scenario (never locked) for the lifetime of the app, so every edit
+      // always lands in the same, single, traceable place.
+      ensureScenario: () => get().activeScenario(),
 
       setActive: (id) => set({ active: id }),
 
@@ -353,8 +349,8 @@ export const useRoadmapStore = create<RoadmapState>()(
           baseLinks,
           baseSprints,
           decisions: [entry, ...s.decisions],
-          scenarios: [BASE_SCENARIO],
-          active: "base",
+          scenarios: [freshWorkingScenario()],
+          active: "working",
           linkMode: false,
           linkFrom: null,
         });
