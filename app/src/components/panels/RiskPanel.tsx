@@ -42,14 +42,16 @@ export function RiskPanel({ sched }: { sched: ScheduleResult }) {
           </div>
         ))}
         {Object.keys(sched.summary.notify).length > 0 && (
-          <Text size="xs" mt={4}>
-            <Badge size="xs" variant="outline" color="blue" mr={4}>
+          <div style={{ display: "flex", gap: 4, alignItems: "baseline", marginTop: 4 }}>
+            <Badge size="xs" variant="outline" color="blue">
               update
             </Badge>
-            {Object.entries(sched.summary.notify)
-              .map(([k, v]) => `${k}: ${v.join("; ")}`)
-              .join(" · ")}
-          </Text>
+            <Text size="xs">
+              {Object.entries(sched.summary.notify)
+                .map(([k, v]) => `${k}: ${v.join("; ")}`)
+                .join(" · ")}
+            </Text>
+          </div>
         )}
       </Stack>
     </Paper>
