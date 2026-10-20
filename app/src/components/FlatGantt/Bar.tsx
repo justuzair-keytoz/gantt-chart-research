@@ -28,7 +28,6 @@ export function Bar(props: {
   linkSource: boolean;
   resizable: boolean;
   onPointerDown: (e: React.PointerEvent, kind: "move" | "resize") => void;
-  onLinkHandle: () => void;
 }) {
   const { pos } = props;
   const outline = outlineSeverity(props.risks);
@@ -51,7 +50,12 @@ export function Bar(props: {
         opacity={props.done ? 0.55 : 1}
         stroke={outline ? SEV_COLOR[outline] : props.linkSource ? "#1d4ed8" : "none"}
         strokeWidth={outline ? 2 : props.linkSource ? 2 : 0}
-        strokeDasharray={props.linkSource ? "3 2" : undefined}
+        // Critical/expired (gate violated) gets a "broken" dashed outline,
+        // per spec.md's drag-cap note — distinct from a plain solid warning
+        // outline, and from the dashed link-source selection outline below.
+        strokeDasharray={
+          props.linkSource ? "3 2" : outline === "critical" || outline === "expired" ? "4 2" : undefined
+        }
       />
       {props.review && (
         <rect
@@ -83,20 +87,10 @@ export function Bar(props: {
           onPointerDown={(e) => props.onPointerDown(e, "resize")}
         />
       )}
-      <circle
-        cx={pos.w + 7}
-        cy={pos.h / 2}
-        r={5}
-        fill="#fff"
-        stroke="#94a3b8"
-        strokeWidth={1.5}
-        style={{ cursor: "crosshair" }}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          props.onLinkHandle();
-        }}
-      />
+      {/* Link-start handle circle removed — reactflow's own Handle elements
+          (AnchorNode in DependencyEdges.tsx, positioned over this exact
+          rect) are now the visible drag-to-connect affordance. See
+          spec.md's correction note and useLinkDrag.ts's removal. */}
     </g>
   );
 }
