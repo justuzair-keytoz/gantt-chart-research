@@ -4,6 +4,19 @@ Tracks what's actually been built against this version's spec ([`spec.md`](./spe
 
 The two entries below predate the ticket breakdown and were written retroactively, covering work already done before this convention existed. Starting with the ticket breakdown under [`./tickets/`](./tickets/), every new entry names the ticket(s) it closes — see [`AGENTS.md`](../../../../AGENTS.md) for the rule.
 
+## 2026-10-20 — Ticket 01 closed: milestones get their own row
+
+**Closes:** [`tickets/01-milestone-own-row.md`](./tickets/01-milestone-own-row.md)
+
+**Implemented:**
+- `layout.ts`'s `buildRows()` now appends one row per milestone, grouped below the sprint-grouped rows and sorted by due date ascending, with a new `"milestone"` row kind.
+- `Milestone.tsx`'s diamond now positions against that row's own Y coordinate (`rowY` prop) instead of a shared header band.
+
+**Removed:**
+- The two-band header-lane rendering (`MILESTONE_BAND_Y`, `milestoneBands()`) decided against in `spec.md`'s "Correction, major" note — fully deleted, not left dead alongside the new approach.
+
+Verified: gating connectors still follow a dragged task's bar, Expand All/Collapse All still works with milestone rows present, `npm run build` passes with zero TypeScript errors (independently reproduced, not just taken from the implementer's report).
+
 ## 2026-10-20 — milestone overlap + schema field alignment fix
 
 **Fixed:**
