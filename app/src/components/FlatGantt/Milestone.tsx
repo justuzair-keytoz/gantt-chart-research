@@ -6,19 +6,18 @@
 
 import { parseISO, fmt } from "@/lib/engine/date-utils";
 import type { Milestone as MilestoneType } from "@/lib/engine/types";
-import { AXIS_H, MILESTONE_BAND_Y, xForDate, type BarPos } from "./layout";
+import { AXIS_H, xForDate, type BarPos } from "./layout";
 
 export function MilestoneDiamond(props: {
   milestone: MilestoneType;
   t0: Date;
   gatingBarPositions: BarPos[];
   chartHeight: number;
-  /** 0 or 1, from layout.ts's milestoneBands() — avoids overlapping labels
-   * when two milestones' dates are close together. */
-  band: number;
+  /** Center-y of the milestone's own row (from the row tree, like any other row). */
+  rowY: number;
 }) {
   const x = xForDate(props.t0, parseISO(props.milestone.dueDate));
-  const y = MILESTONE_BAND_Y[props.band] ?? MILESTONE_BAND_Y[0];
+  const y = props.rowY;
   const size = 7;
 
   return (

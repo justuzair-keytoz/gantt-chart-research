@@ -11,15 +11,14 @@ export const DW = 14;
 export const ROW_H = 32;
 export const STEP_H = 26;
 export const SPRINT_H = 34;
-// Taller than the prototype's AXIS_H (48) to fit two staggered milestone
-// bands above the month-label row without them colliding — see
-// milestoneBands() below.
-export const AXIS_H = 64;
+export const MILESTONE_ROW_H = 32;
+// Matches the prototype's AXIS_H (48) — no longer needs extra height for
+// staggered milestone bands, since milestones now get their own rows.
+export const AXIS_H = 48;
 export const UNSCHEDULED_ID = "__unscheduled";
-export const MILESTONE_BAND_Y = [16, 32] as const;
 
 export interface GanttRow {
-  kind: "sprint" | "task" | "step";
+  kind: "sprint" | "task" | "step" | "milestone";
   id: string;
   y: number;
   height: number;
@@ -32,6 +31,8 @@ export interface GanttRow {
   /** Linkable/draggable unit id: a step uid, or a task id for a plain-bar task. */
   uid?: string;
   stageColor?: string;
+  /** Set on "milestone" rows, for rendering the diamond at this row's dueDate/color. */
+  milestoneId?: string;
 }
 
 function sprintIdForDate(
@@ -133,30 +134,32 @@ export function buildRows(
     });
   });
 
+  // Milestones get their own group below the sprint-grouped rows, one row
+  // per milestone, sorted by due date ascending — per spec.md's
+  // "Correction, major" note. Each is a zero-width diamond at a fixed due
+  // date, not a dated bar, so it needs no expand/collapse or task/step tree.
+  const sortedMilestones = [...ctx.milestones].sort(
+    (a, b) => parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime(),
+  );
+  sortedMilestones.forEach((m) => {
+    rows.push({
+      kind: "milestone",
+      id: `milestone::${m.id}`,
+      y,
+      height: MILESTONE_ROW_H,
+      depth: 0,
+      label: m.name,
+      collapsible: false,
+      milestoneId: m.id,
+    });
+    y += MILESTONE_ROW_H;
+  });
+
   return { rows, height: y + 24 };
 }
 
 export function xForDate(t0: Date, date: Date): number {
   return diffDays(date, t0) * DW;
-}
-
-/**
- * Assigns each milestone a vertical band (0 or 1) so labels close together
- * in time don't render on top of each other — ported from the prototype's
- * `(i % 2) * 12` label offset, which solved the exact same overlap by
- * alternating by sorted-date order rather than by a fixed position.
- */
-export function milestoneBands(
-  milestones: { id: string; dueDate: string }[],
-): Record<string, number> {
-  const sorted = [...milestones].sort(
-    (a, b) => parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime(),
-  );
-  const bands: Record<string, number> = {};
-  sorted.forEach((m, i) => {
-    bands[m.id] = i % 2;
-  });
-  return bands;
 }
 
 export interface BarPos {
