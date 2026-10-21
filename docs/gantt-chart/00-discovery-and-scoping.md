@@ -47,3 +47,11 @@ On the mental model: what counts as a "blocker" here? Is it strictly the `depend
 On scope: is this view read-only to start, just showing what already exists, or does dragging and editing need to be part of the concept from day one? That's not a "which phase" question, it's asking whether editing belongs in the mental model at all. And when a task is blocked, does the interface need to say why — which dependency, whose task is holding it up — or is a flag enough at this stage of thinking?
 
 Keep iterating on these before writing anything down as a settled user story. The mental model needs to stop shifting first.
+
+**Update 2026-10-21:** several of these doubts have since been answered directly, during the review that produced [`spec/v2/spec.md`](./spec/v2/spec.md) — recorded here rather than silently treated as always having been settled.
+
+- **"What counts as a blocker?"** Answered: not strictly the `dependencies` relation. The project owner named three distinct meanings directly — an assignee with clashing deadlines, nobody assigned but overlapping timelines, and a dependent subtask whose predecessor must reach a certain point before the next one can start. See `spec/v2/spec.md`'s "Blocked" decisions.
+- **"Is the unit of a Gantt row a task, or do subtasks get their own nested rows?"** Answered: subtasks get their own nested rows, to any depth a user actually creates — not flattened to one level. See `spec/v2/spec.md`'s nesting decision.
+- Stages were independently confirmed as staying, directly: the project owner named a concrete cross-stage dependency example (development depending on design and review finishing first), separately from and consistent with the CTO doc's own R1/R2.
+
+Not yet answered by this update: whether `parentTask`/`subtasks` is the actual relation the Gantt's nesting should use, or a separate nesting concept that happens to look similar — this is still open, see `spec/v2/spec.md`'s Open Questions.

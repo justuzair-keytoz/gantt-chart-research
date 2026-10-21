@@ -56,6 +56,16 @@ Opening a task's own detail panel shows the same relationship from the inside, u
 
 One more variant of the board view, with Sprint 1 and Sprint 3 expanded and Sprint 2 collapsed, at Months zoom: the dependency lines route from a child task, through a collapsed sprint's own bar, and on to another child task further down the board — confirming the lines don't break just because the chart in between them is collapsed.
 
+## Jira Plans (Advanced Roadmaps) — parent dates and overrun warnings (added 2026-10-21, documentation only)
+
+Two claims below, sourced from Atlassian's own documentation and a community forum post — not verified against a running Jira Plans instance, and not screenshot-backed the way the walkthrough above is.
+
+Per Atlassian's own documentation: a parent issue (epic) on the roadmap can either have its dates set manually, or have them inferred automatically from its child issues' dates — and sprints render directly in the timeline header, not as a separate container a child issue must belong to. Source: [Manage epics on the roadmap (Atlassian documentation)](https://confluence.atlassian.com/jirasoftwarecloud/manage-epics-on-the-roadmap-976172306.html).
+
+Per a community forum answer — **lower-quality source, a user's forum post, not Atlassian's own documentation, flagged as such rather than treated as confirmed** — Jira Plans shows a warning when a child issue's dates run past its parent epic's due date, but does not relocate or constrain the child automatically; it surfaces the conflict and leaves the resolution to the user. Source: [Plan Epics in Parallel in Jira Plans (Atlassian Community forum)](https://community.atlassian.com/forums/Advanced-Planning-in-Jira/Plan-Epics-in-Parallel-in-Jira-Plans/td-p/2882771).
+
+Relevant to this repo's own v2 round: this is the closest precedent found, across every tool in this folder, for "a task running longer than its container" — and it only gets as far as inferring dates and warning on overrun, not actually letting a child's bar render as a single continuous bar crossing a sprint-band boundary the way `docs/gantt-chart/spec/v2/spec.md` proposes. None of the tools surveyed in this repo's research do more than Jira Plans does here — see `01-feature-plan.md`'s updated note on this same gap.
+
 ## Sources
 
 - [What is a Gantt chart? (Atlassian)](https://www.atlassian.com/agile/project-management/gantt-chart)

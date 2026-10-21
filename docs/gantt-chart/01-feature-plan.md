@@ -48,9 +48,11 @@ A smaller find from the same pass: Monday.com doesn't force one global answer to
 
 Nothing from Asana or TeamGantt cleared the bar of actually adding something new — their dependency and critical-path features are the same shape already covered by Jira, ClickUp, and Wrike, just gated behind different pricing.
 
+**Update 2026-10-21 — a second real gap, found reading one tool's documentation, not a screenshot:** a task running longer than the sprint or container it belongs to, and needing to render as one continuous bar crossing that boundary rather than being split or silently reassigned, has no clean precedent either — none of the tools in `competitors/` showed it, and Jira Plans (per `competitors/jira.md`'s newly-added, documentation-only citation) only gets as far as inferring a parent's dates from its children and warning when a child overruns, not actually letting a bar cross a container boundary cleanly. Phrased deliberately as "none of the tools surveyed here show it," not "no competitor does this" — this survey covers seven tools plus one documentation-only addition, not the whole market, the same caveat the NocoDB finding above already establishes for this file.
+
 ## Still unresolved
 
-Row granularity for subtasks — nested and indented, or flattened to one level — has no clean precedent in anything surveyed; the closest example (Jira) nests sprint under issue, not task under subtask. Whether dragging and editing belong in the concept at all on day one, or whether this starts read-only, is a product-scope call that no amount of competitor research settles. And the exact words this product should use for "blocker" are still an open question.
+**Update 2026-10-21:** row granularity for subtasks is no longer unresolved — see `spec/v2/spec.md`'s nesting decision, DECIDED directly by the project owner: nested and indented, to any depth, not flattened to one level. Left here, struck through in spirit rather than deleted, so this file's own history of what used to be open stays legible. Still genuinely unresolved: the exact words this product should use for "blocker" (v2 names several distinct meanings rather than settling on one label — see `spec/v2/spec.md`'s Blocked-rules table), and whether dragging/editing belonging in the concept from day one — that one was answered for v1 (editing is in scope from the first slice, see `spec/v1/spec.md`), so it no longer applies to future rounds either.
 
 ## Where things stand now
 

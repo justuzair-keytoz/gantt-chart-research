@@ -11,5 +11,6 @@ Each file is self-contained: what the tool does, and where that came from. Add n
 | [Airtable](./airtable.md) | Closest existing data model match to this repo's `dependencies` self-relation; a live walkthrough covering the Milestone type, explicit Predecessors/Successors UI, invalid-dependency detection, and a separate Timeline view |
 | [Notion](./notion.md) | The floor — simplest thing people still call a Gantt chart |
 | [Linear](./linear.md) | Cycles as the sprint concept; a live walkthrough found project-level Blocked by/Blocking fields and cross-project dependency lines that secondhand write-ups said didn't exist |
+| [Microsoft Project](./ms-project.md) | Roll-up Gantt bars on a collapsed summary task, Task Inspector/Task Path for highlighting what's driving a date, and a summary task's predecessor constraining its subtasks — documentation only, no screenshots, added 2026-10-21 |
 
 Shared screenshot assets live in `../assets/`.
