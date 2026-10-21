@@ -68,6 +68,12 @@ export interface RoadmapState extends RoadmapPersistedState {
   setAsOf: (iso: string) => void;
   toggleExpanded: (id: string) => void;
   expandAll: (ids: string[]) => void;
+  /** Per-row "Expand all" (User Story 31): merges `ids` into the existing
+   * `expanded` set rather than replacing it — unlike `expandAll`, which is
+   * the global "Expand all" button and intentionally does replace the whole
+   * list, this must not collapse whatever other branches the user already
+   * had open elsewhere in the tree. */
+  expandSubtree: (ids: string[]) => void;
   collapseAll: () => void;
 
   togglePersonOut: (preset: PersonOut, on: boolean) => void;
@@ -237,6 +243,8 @@ export const useRoadmapStore = create<RoadmapState>()(
         })),
 
       expandAll: (ids) => set({ expanded: ids }),
+      expandSubtree: (ids) =>
+        set((s) => ({ expanded: Array.from(new Set([...s.expanded, ...ids])) })),
       collapseAll: () => set({ expanded: [] }),
 
       togglePersonOut: (preset, on) => {
