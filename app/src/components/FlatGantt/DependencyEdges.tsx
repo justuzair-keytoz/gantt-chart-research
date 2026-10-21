@@ -59,6 +59,19 @@ export interface DepEdgeData {
 
 const CORNER_RADIUS = 6;
 
+/**
+ * Extra width tacked onto a linkable anchor node past the bar's real right
+ * edge, so the reactflow source Handle (Position.Right, CSS `right: -4px`
+ * relative to the node's own box) lands a few px clear of Bar.tsx's 6px-wide
+ * resize grip (`x={pos.w - 6}`) instead of directly on top of it — the two
+ * used to occupy the same pixels, so a click near the edge could grab either
+ * gesture unpredictably. Only the anchor node's own (invisible) box grows;
+ * the bar's real rect/grip are untouched. FlatGantt.tsx's flowNodes memo and
+ * useBarDrag.ts's live-drag repaint both need this same value so the handle
+ * stays correctly offset whether the bar is static or mid-drag/resize.
+ */
+export const HANDLE_RIGHT_PAD = 6;
+
 function dist(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
@@ -143,14 +156,25 @@ function pathFor(data: DepEdgeData): string {
  */
 function DependencyEdge({ id, data }: EdgeProps<DepEdgeData>) {
   if (!data) return null;
+  // Default (non-clash) stroke now differs by `removable` — previously both
+  // a removable single-link dependency edge and a non-removable merged-group
+  // dependency edge (several hidden links collapsed onto one row-to-row
+  // line, ambiguous to click-remove) fell through to the same "#9ca3af"
+  // default, with no way to tell them apart before hovering/clicking.
+  // Milestone connectors are unaffected: they always pass an explicit
+  // `stroke`/`dashed` (m?.color / "4 3", or clash red), so these fallbacks
+  // never apply to them. Clash styling (`data.stroke`/`data.dashed` set by
+  // the `g.clash`/`isGatingRisk` callers) still wins whenever present.
+  const stroke = data.stroke ?? (data.removable ? "#64748b" : "#cbd5e1");
+  const dashed = data.dashed ?? (data.removable ? undefined : "2 3");
   return (
     <path
       data-link={id}
       d={pathFor(data)}
       className="react-flow__edge-path"
-      stroke={data.stroke ?? "#9ca3af"}
+      stroke={stroke}
       strokeWidth={data.strokeWidth ?? 1.3}
-      strokeDasharray={data.dashed}
+      strokeDasharray={dashed}
       fill="none"
       // reactflow's own stylesheet sets .react-flow__edge { pointer-events:
       // visibleStroke } regardless of this inline style's ancestor — a
