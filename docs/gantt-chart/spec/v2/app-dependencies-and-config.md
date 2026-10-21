@@ -1,0 +1,13 @@
+# Standalone app — dependency and config policy, v2
+
+Unchanged from [`v1/app-dependencies-and-config.md`](../v1/app-dependencies-and-config.md) in every respect — no new package is needed for anything this round proposes.
+
+## Zoom needs no new package
+
+v2's pinch-to-zoom requirement (DECIDED) and the continuous-zoom-with-presets design (PROPOSED) are both implementable with the prototype's own original approach: a native `wheel` event listener with `{ passive: false }` so `preventDefault()` can actually stop the browser's own page-zoom, triggered on `ctrlKey || metaKey`, driving a plain numeric day-width value through the same `DW`-consuming call sites that already exist (`layout.ts`, `Bar.tsx`, `DependencyEdges.tsx`, the axis header in `FlatGantt.tsx`) — turning `DW` from a constant into state, not introducing a zoom/pan library. `reactflow`'s own zoom is already disabled (`zoomOnScroll`, `zoomOnPinch`, `minZoom`/`maxZoom` all pinned at `1` in `DependencyEdges.tsx`, confirmed this round), so a native wheel handler on the surrounding chart container won't fight it.
+
+**Pinch-gesture browser evidence, mixed, added 2026-10-21:** a W3C mailing-list report states that on Chrome and Firefox, a trackpad pinch gesture arrives as a `wheel` event with `ctrlKey` set — the same mechanism the prototype's own listener already relies on. Source: [W3C public-webapps mailing list, Oct 2024](https://lists.w3.org/Archives/Public/public-webapps-github/2024Oct/0088.html). An older, separate report states Safari instead dispatched its own proprietary `gesture*` events for pinch, not a `wheel` event at all. Source: [d3-zoom issue #229](https://github.com/d3/d3-zoom/issues/229). These two sources don't agree on Safari's current behavior, and neither is a screenshot or a firsthand test in this repo — **mark Safari as "test it" before relying on the `ctrlKey`-wheel approach there**, and keep a native `gesturechange` listener as the fallback path if testing shows Safari needs it (a browser API, not a new package, so this doesn't change the dependency table above either way).
+
+## Everything else
+
+The full reused-and-pinned table, the "why pin exactly" reasoning, the two transitive-dependency additions (`dayjs`, `autoprefixer`), the `@mantine/core`/`@mantine/dates` peer-dependency mismatch note, and the config-reuse section all carry forward unchanged — see [`v1/app-dependencies-and-config.md`](../v1/app-dependencies-and-config.md) for the full detail. If a new package is actually proposed for a later v2 ticket (none is, as of this writing), it gets pinned to the exact version already in `databonder-enterprise-search`'s `UI/package.json`, per the same policy, and documented here with why, the same as every entry in the v1 table already is.
