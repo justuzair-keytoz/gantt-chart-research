@@ -7,10 +7,10 @@
 
 import { useCallback, useRef } from "react";
 import { computeSchedule, type ScheduleContext } from "@/lib/engine/schedule";
-import { addDays, diffDays, parseISO, toISO } from "@/lib/engine/date-utils";
+import { addDays, diffDays, fmt, parseISO, toISO } from "@/lib/engine/date-utils";
 import type { Overlay, ScheduleResult, StepSchedule } from "@/lib/engine/types";
-import { barPosForRow, DW, type GanttRow } from "./layout";
-import { elbowPath, milestonePath, type Point } from "./DependencyEdges";
+import { barPosForRow, type GanttRow } from "./layout";
+import { elbowPath, HANDLE_RIGHT_PAD, milestonePath, type Point } from "./DependencyEdges";
 import { resolveVisibleRow } from "./resolveLinkEndpoint";
 
 /** A step/task → milestone gating relationship: the milestone end is a fixed
@@ -86,6 +86,8 @@ export function useBarDrag(opts: {
   /** Wrapper div containing both the SVG and the reactflow edges layer — scopes the paint-frame's edge query instead of searching the whole document. */
   chartRef: React.RefObject<HTMLDivElement>;
   ctx: ScheduleContext;
+  /** Current day-column width (v2: zoom state, owned by FlatGantt.tsx) — read live off opts, not captured at hook-setup time. */
+  dw: number;
   getOverlay: () => Overlay;
   asOf: string;
   baselineUnits: Record<string, StepSchedule> | null;
@@ -103,26 +105,50 @@ export function useBarDrag(opts: {
   const dragRef = useRef<DragState | null>(null);
 
   const paintFrame = useCallback(
-    (sched: ScheduleResult, violation?: { uid: string; violated: boolean }) => {
+    (sched: ScheduleResult, violation?: { uid: string; violated: boolean; reason?: string }) => {
       const svg = opts.svgRef.current;
       if (!svg) return;
+      // Dependency edges now render via reactflow (DependencyEdgesLayer), a
+      // sibling DOM subtree outside `svg`, so this scopes to the shared
+      // chart wrapper (both the SVG and the edges layer live under it)
+      // rather than svgRef — same `[data-link]` attribute/id convention as
+      // before, just no longer inside this SVG. Looked up up-front (not just
+      // before the edge-patching code below) so the per-uid loop can also
+      // reach into it to keep each bar's reactflow anchor node glued to it
+      // live, same as the bar/grip themselves.
+      const chart = opts.chartRef.current;
       Object.entries(opts.rowByUid).forEach(([uid, row]) => {
         const el = svg.querySelector<SVGGElement>(`[data-bar="${CSS.escape(uid)}"]`);
         if (!el) return;
         const s = resolveBar(sched, uid);
-        const pos = barPosForRow(opts.ctx.t0, row, s.start, s.durationDays);
+        const pos = barPosForRow(opts.ctx.t0, row, s.start, s.durationDays, opts.dw);
         el.setAttribute("transform", `translate(${pos.x},${pos.y})`);
         const body = el.querySelector("rect.body");
         if (body) body.setAttribute("width", String(pos.w));
         const grip = el.querySelector("[data-grip]");
         if (grip) grip.setAttribute("x", String(pos.w - 6));
+        // Keep the reactflow connect-handle anchor node glued to the bar
+        // during a live drag too. Previously only the plain-SVG bar/grip
+        // above were repainted every pointermove frame (for 60fps, no React
+        // re-render); the anchor nodes (reactflow's own real DOM elements,
+        // `.react-flow__node[data-id="<uid>"]`, see @reactflow/core's
+        // NodeWrapper) only updated on the next React re-render — i.e. only
+        // after the drag committed — so the connect dots visibly lagged
+        // behind a moving/resizing bar mid-gesture. Patched the same
+        // imperative way: reactflow controls this element's `style.transform`
+        // via its own inline style object, but a direct mutation here is
+        // safe exactly like it is for the bar/grip (a later proper React
+        // re-render — on commit — simply overwrites it back to the correct
+        // computed value, same reconciliation already relied on above).
+        // Widened by HANDLE_RIGHT_PAD to match flowNodes' own node width
+        // (see Fix 1 / HANDLE_RIGHT_PAD's doc comment), so the Handle offset
+        // stays consistent during a resize too.
+        const anchor = chart?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(uid)}"]`);
+        if (anchor) {
+          anchor.style.transform = `translate(${pos.x}px,${pos.y}px)`;
+          anchor.style.width = `${pos.w + HANDLE_RIGHT_PAD}px`;
+        }
       });
-      // Dependency edges now render via reactflow (DependencyEdgesLayer), a
-      // sibling DOM subtree outside `svg`, so this scopes to the shared
-      // chart wrapper (both the SVG and the edges layer live under it)
-      // rather than svgRef — same `[data-link]` attribute/id convention as
-      // before, just no longer inside this SVG.
-      const chart = opts.chartRef.current;
       if (!chart) return;
       if (violation) {
         const drag = dragRef.current;
@@ -167,6 +193,45 @@ export function useBarDrag(opts: {
             }
           }
         }
+        // Drag-cap explanation label (Fix 4): the freeze itself was already
+        // visible (the dashed red outline above), but said nothing about
+        // *which* of the three boundaries (milestone gate / chart edge /
+        // task span) caused it — a frozen bar with no explanation reads as a
+        // bug, not a deliberate cap. `violation.reason` is computed in
+        // handleMove (it has the pre-cap testTask/boundaries at hand) and
+        // just painted here, imperatively, onto the always-rendered-but-
+        // hidden `[data-drag-label]` group (see FlatGantt.tsx) — same
+        // query/setAttribute pattern as the rest of this function, no React
+        // state, no per-frame element creation.
+        const labelG = svg.querySelector<SVGGElement>('[data-drag-label="1"]');
+        if (labelG) {
+          if (violation.violated && violation.reason && drag) {
+            const row = opts.rowByUid[violation.uid];
+            if (row) {
+              const s = resolveBar(sched, violation.uid);
+              const pos = barPosForRow(opts.ctx.t0, row, s.start, s.durationDays, opts.dw);
+              const text = violation.reason;
+              const h = 16;
+              const w = text.length * 5.6 + 12; // approximate — avoids an
+              // extra getBBox() reflow every pointermove frame; close enough
+              // for a short-lived explanatory pill, not pixel-measured text.
+              const x = pos.x;
+              const y = Math.max(2, pos.y - h - 4);
+              const rectEl = labelG.querySelector("rect");
+              const textEl = labelG.querySelector("text");
+              rectEl?.setAttribute("x", String(x));
+              rectEl?.setAttribute("y", String(y));
+              rectEl?.setAttribute("width", String(w));
+              rectEl?.setAttribute("height", String(h));
+              textEl?.setAttribute("x", String(x + 6));
+              textEl?.setAttribute("y", String(y + h - 5));
+              if (textEl) textEl.textContent = text;
+              labelG.style.display = "";
+            }
+          } else {
+            labelG.style.display = "none";
+          }
+        }
       }
       chart.querySelectorAll<SVGPathElement>("[data-link]").forEach((el) => {
         const [from, to] = (el.dataset.link ?? "").split(">");
@@ -178,8 +243,8 @@ export function useBarDrag(opts: {
         if (!a || !b) return;
         const sa = resolveBar(sched, from);
         const sb = resolveBar(sched, to);
-        const pa = barPosForRow(opts.ctx.t0, a, sa.start, sa.durationDays);
-        const pb = barPosForRow(opts.ctx.t0, b, sb.start, sb.durationDays);
+        const pa = barPosForRow(opts.ctx.t0, a, sa.start, sa.durationDays, opts.dw);
+        const pb = barPosForRow(opts.ctx.t0, b, sb.start, sb.durationDays, opts.dw);
         el.setAttribute("d", elbowPath(pa, pb));
       });
       opts.milestoneLinks.forEach((ml) => {
@@ -189,7 +254,7 @@ export function useBarDrag(opts: {
         const row = resolveVisibleRow(ml.uid, opts.ctx, sched, opts.rowByUid, opts.rowsById);
         if (!el || !row) return;
         const s = resolveBar(sched, ml.uid);
-        const pos = barPosForRow(opts.ctx.t0, row, s.start, s.durationDays);
+        const pos = barPosForRow(opts.ctx.t0, row, s.start, s.durationDays, opts.dw);
         el.setAttribute("d", milestonePath(pos, ml.target.x, ml.target));
       });
     },
@@ -213,7 +278,7 @@ export function useBarDrag(opts: {
     (e: PointerEvent) => {
       const drag = dragRef.current;
       if (!drag) return;
-      const days = Math.round((e.clientX - drag.x0) / DW);
+      const days = Math.round((e.clientX - drag.x0) / opts.dw);
       if (!drag.moved && Math.abs(e.clientX - drag.x0) < 3) return;
       drag.moved = true;
 
@@ -227,6 +292,22 @@ export function useBarDrag(opts: {
           testTask.end > drag.chartEnd ||
           testTask.start < drag.chartStart ||
           taskSpanExceeded);
+
+      // Fix 4: which specific boundary caused this freeze — checked in the
+      // same priority order `exceeds` itself does (gate, then chart, then
+      // task span), using the pre-cap `testTask`/boundaries this function
+      // already has at hand. `fmt` matches the "DD Mon" short-date style
+      // used elsewhere in this app (e.g. the "As of" pill).
+      let reason: string | undefined;
+      if (exceeds && testTask) {
+        if (drag.gateDueDate !== null && testTask.end > drag.gateDueDate) {
+          reason = `Capped at milestone deadline (${fmt(drag.gateDueDate)})`;
+        } else if (testTask.end > drag.chartEnd || testTask.start < drag.chartStart) {
+          reason = "Capped at chart edge";
+        } else if (taskSpanExceeded) {
+          reason = "Capped — would delay a later step in this task";
+        }
+      }
 
       let effectiveDays = days;
       let violated = false;
@@ -260,7 +341,7 @@ export function useBarDrag(opts: {
       drag.lastDays = effectiveDays;
       drag.violated = violated;
       drag.taskSpanViolated = taskSpanViolated;
-      paintFrame(schedToUse, { uid: drag.uid, violated });
+      paintFrame(schedToUse, { uid: drag.uid, violated, reason });
     },
     [opts, paintFrame, applyDays],
   );
@@ -269,6 +350,13 @@ export function useBarDrag(opts: {
     window.removeEventListener("pointermove", handleMove);
     const drag = dragRef.current;
     dragRef.current = null;
+    // A drag released while still frozen against a boundary would otherwise
+    // leave the Fix 4 explanation label stuck on-screen forever (nothing
+    // else hides it once pointermove stops firing) — hide it unconditionally
+    // on every drag end, the actual bar's outline gets reset the normal way
+    // via the store commit's React re-render.
+    const labelG = opts.svgRef.current?.querySelector<SVGGElement>('[data-drag-label="1"]');
+    if (labelG) labelG.style.display = "none";
     if (!drag) return;
     if (!drag.moved || drag.lastDays === 0) {
       opts.onClick(drag.uid);

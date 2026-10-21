@@ -18,8 +18,9 @@ export function MilestoneDiamond(props: {
   chartHeight: number;
   /** Center-y of the milestone's own row (from the row tree, like any other row). */
   rowY: number;
+  dw: number;
 }) {
-  const x = xForDate(props.t0, parseISO(props.milestone.dueDate));
+  const x = xForDate(props.t0, parseISO(props.milestone.dueDate), props.dw);
   const y = props.rowY;
   const size = 7;
 

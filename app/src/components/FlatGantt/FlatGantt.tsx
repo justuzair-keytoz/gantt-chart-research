@@ -5,7 +5,7 @@
 // sidebar, collapsible sprint rows, and milestone diamonds the prototype
 // doesn't have.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActionIcon,
   Badge,
@@ -21,7 +21,8 @@ import {
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 
-import { computeSchedule, emptyOverlay } from "@/lib/engine/schedule";
+import { computeSchedule, emptyOverlay, type ScheduleContext } from "@/lib/engine/schedule";
+import type { ScheduleResult } from "@/lib/engine/types";
 import { parseISO, toISO, isWeekend, addDays } from "@/lib/engine/date-utils";
 import { DAYS, OUT_PRESETS, T0, TODAY } from "@/lib/mock-data";
 import { useRoadmapStore, type RoadmapState } from "@/lib/store/useRoadmapStore";
@@ -31,11 +32,14 @@ import type { Edge, Node } from "reactflow";
 
 import {
   AXIS_H,
-  DW,
+  DEFAULT_DW,
   LABEL_W,
+  SPRINT_H,
+  UNSCHEDULED_ID,
   allCollapsibleIds,
   barPosForRow,
   buildRows,
+  collapsibleDescendantIds,
   xForDate,
   type BarPos,
   type GanttRow,
@@ -43,7 +47,7 @@ import {
 import { Bar, GhostBar } from "./Bar";
 import { MilestoneDiamond } from "./Milestone";
 import { resolveBar, useBarDrag, type MilestoneLink } from "./useBarDrag";
-import { DependencyEdgesLayer, type DepEdgeData } from "./DependencyEdges";
+import { DependencyEdgesLayer, HANDLE_RIGHT_PAD, type DepEdgeData } from "./DependencyEdges";
 import { resolveVisibleRow } from "./resolveLinkEndpoint";
 import { StepEditor } from "@/components/StepEditor/StepEditor";
 import { CommitDialog } from "@/components/CommitDialog/CommitDialog";
@@ -65,6 +69,92 @@ export function FlatGantt() {
   const [selected, setSelected] = useState<{ uid: string; x: number; y: number } | null>(null);
   const [commitOpen, setCommitOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+
+  // v2 zoom: day-column width is now state (ported from prototype/app.js's
+  // module-level `let DW`, see setZoom() below), not the old `layout.ts`
+  // constant. 36 (not the prototype's 12) stays the default — see spec/v2's
+  // zoom decision note.
+  const [dw, setDw] = useState(DEFAULT_DW);
+  // Read live inside setZoom/the wheel handler without re-subscribing those
+  // callbacks on every dw change (both are set up once, in effects/useCallback
+  // with stable deps) — a plain ref kept in sync with the current render's dw.
+  const dwRef = useRef(dw);
+  dwRef.current = dw;
+  // setZoom's cursor-anchoring math (dayAt, the pointer's clientX, and the
+  // chart's bounding-rect left) is computed BEFORE the dw state update, from
+  // the pre-zoom layout — then consumed by the useLayoutEffect below, which
+  // fires after React has committed the new dw to the DOM but before the
+  // browser paints, so the corrective scrollLeft write never flashes the old
+  // (unanchored) scroll position on screen. This is the one place a
+  // synchronous "setDW + direct DOM write" (the prototype's own approach)
+  // can't translate 1:1 into React: the new layout only exists after a
+  // render triggered by the state update, so the restore has to happen in a
+  // layout effect keyed on dw instead of immediately after setDw.
+  const pendingAnchorRef = useRef<{ dayAt: number; ax: number; left: number } | null>(null);
+  // Zoom-to-fit wants scrollLeft reset to 0 instead of anchor-restored —
+  // a separate flag so the same dw-keyed layout effect can tell which
+  // behavior this particular zoom change wants.
+  const scrollToZeroRef = useRef(false);
+
+  const setZoom = useCallback((nw: number, anchorClientX?: number) => {
+    const clamped = Math.max(4, Math.min(40, nw));
+    const el = scrollRef.current;
+    if (!el || clamped === dwRef.current) return;
+    const r = el.getBoundingClientRect();
+    const ax = anchorClientX ?? r.left + r.width / 2;
+    const dayAt = (el.scrollLeft + ax - r.left - LABEL_W) / dwRef.current;
+    scrollToZeroRef.current = false;
+    pendingAnchorRef.current = { dayAt, ax, left: r.left };
+    setDw(clamped);
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (scrollToZeroRef.current) {
+      scrollToZeroRef.current = false;
+      el.scrollLeft = 0;
+      return;
+    }
+    const anchor = pendingAnchorRef.current;
+    if (!anchor) return;
+    pendingAnchorRef.current = null;
+    el.scrollLeft = Math.max(0, anchor.dayAt * dw + LABEL_W - (anchor.ax - anchor.left));
+  }, [dw]);
+
+  const zoomFit = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const nw = Math.max(4, Math.min(40, Math.floor((el.clientWidth - LABEL_W - 24) / DAYS)));
+    pendingAnchorRef.current = null;
+    scrollToZeroRef.current = true;
+    setDw(nw);
+  }, []);
+
+  const zoomToday = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollLeft = Math.max(0, xForDate(T0, TODAY, dwRef.current) - el.clientWidth / 3);
+  }, []);
+
+  // Native (non-JSX) wheel listener: React's onWheel is always passive and
+  // can't call preventDefault(), which is required here — without it, a
+  // trackpad pinch (which Chrome/Firefox deliver as a ctrl/metaKey wheel
+  // event) falls through to the browser's own page-zoom instead of this
+  // custom chart zoom. Ported directly from prototype/app.js's wrap wheel
+  // listener.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const cur = dwRef.current;
+      setZoom(Math.round(cur * (e.deltaY < 0 ? 1.15 : 1 / 1.15)) || cur + (e.deltaY < 0 ? 1 : -1), e.clientX);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [setZoom]);
 
   const ctx = useMemo(
     () => buildContext(state),
@@ -129,10 +219,10 @@ export function FlatGantt() {
     milestoneRows.forEach((row) => {
       const ms = milestoneById[row.milestoneId!];
       if (!ms) return;
-      m[ms.id] = { x: xForDate(ctx.t0, parseISO(ms.dueDate)), y: row.y + row.height / 2 };
+      m[ms.id] = { x: xForDate(ctx.t0, parseISO(ms.dueDate), dw), y: row.y + row.height / 2 };
     });
     return m;
-  }, [milestoneRows, milestoneById, ctx.t0]);
+  }, [milestoneRows, milestoneById, ctx.t0, dw]);
 
   // Gating-task → milestone relationships, fixed-point end (milestone due
   // dates don't move when a gating bar is dragged) — shared by the edge list
@@ -164,6 +254,7 @@ export function FlatGantt() {
     svgRef,
     chartRef,
     ctx,
+    dw,
     getOverlay: () => state.activeScenario().ov,
     asOf: state.asOf,
     baselineUnits,
@@ -195,7 +286,7 @@ export function FlatGantt() {
     },
   });
 
-  const width = DAYS * DW + 40;
+  const width = DAYS * dw + 40;
   const svgHeight = height;
 
   // Focus the viewport on today by default, instead of leaving it at its
@@ -208,10 +299,51 @@ export function FlatGantt() {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const todayX = xForDate(T0, TODAY);
-    el.scrollLeft = Math.max(0, LABEL_W + todayX - DW * 5);
+    const todayX = xForDate(T0, TODAY, dw);
+    el.scrollLeft = Math.max(0, LABEL_W + todayX - dw * 5);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sprint bands — v2's "sprints render as calendar bands" (DECIDED half,
+  // see spec.md), additive only: draws a tinted full-height column range for
+  // each real sprint's [start, end], underneath everything else, same visual
+  // language as weekendBands below. Does NOT touch buildRows()'s sprint-row
+  // grouping — whether a sprint also keeps its own row is still OPEN (see
+  // spec/v2/todo.md), untouched here. Alternating fill colors ported from
+  // prototype/app.js's own sprint-axis rendering (`i % 2 ? "#eef2ff" : "#e0e7ff"`).
+  const sprintBands: JSX.Element[] = [];
+  sched.sprints
+    .filter((s) => s.id !== UNSCHEDULED_ID)
+    .forEach((s, i) => {
+      const x1 = xForDate(T0, parseISO(s.start), dw);
+      const x2 = xForDate(T0, parseISO(s.end), dw) + dw;
+      sprintBands.push(
+        <rect
+          key={s.id}
+          x={x1}
+          y={AXIS_H}
+          width={Math.max(0, x2 - x1)}
+          height={svgHeight - AXIS_H}
+          fill={i % 2 ? "#eef2ff" : "#e0e7ff"}
+        />,
+      );
+      // Label sits below the first sprint-group header row's own full-width
+      // highlight rect (rows.map(...) below, "#eef2ff" fill for row.kind ===
+      // "sprint") — that row is always the topmost row in the tree and would
+      // otherwise paint over (and hide) a label placed right under the axis.
+      sprintBands.push(
+        <text
+          key={`${s.id}-label`}
+          x={x1 + 4}
+          y={AXIS_H + SPRINT_H + 12}
+          fontSize={10}
+          fontWeight={600}
+          fill="#4338ca"
+        >
+          {s.name}
+        </text>,
+      );
+    });
 
   const weekendBands: JSX.Element[] = [];
   for (let i = 0; i < DAYS; i++) {
@@ -220,9 +352,9 @@ export function FlatGantt() {
       weekendBands.push(
         <rect
           key={i}
-          x={xForDate(T0, dt)}
+          x={xForDate(T0, dt, dw)}
           y={AXIS_H}
-          width={DW}
+          width={dw}
           height={svgHeight - AXIS_H}
           fill="#f3f4f6"
         />,
@@ -240,12 +372,12 @@ export function FlatGantt() {
   const dateLabels: JSX.Element[] = [];
   for (let i = 0; i < DAYS; i++) {
     const dt = addDays(T0, i);
-    const cx = xForDate(T0, dt) + DW / 2;
+    const cx = xForDate(T0, dt, dw) + dw / 2;
     // Month label: once per month, left-aligned at that month's first day —
     // or at i===0 if the chart's visible range starts mid-month.
     if (dt.getDate() === 1 || i === 0) {
       monthLabels.push(
-        <text key={i} x={xForDate(T0, dt) + 2} y={AXIS_ROW_H - 5} fontSize={10} fontWeight={600} fill="#4b5563">
+        <text key={i} x={xForDate(T0, dt, dw) + 2} y={AXIS_ROW_H - 5} fontSize={10} fontWeight={600} fill="#4b5563">
           {dt.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
         </text>,
       );
@@ -266,7 +398,7 @@ export function FlatGantt() {
     );
   }
 
-  const asOfX = xForDate(T0, parseISO(state.asOf));
+  const asOfX = xForDate(T0, parseISO(state.asOf), dw);
 
   // Every linkable unit (step, or plain-bar task) gets an anchor node
   // regardless of whether its own row is currently visible — a hidden one's
@@ -278,7 +410,14 @@ export function FlatGantt() {
   const allLinkableUids = useMemo(() => {
     const ids = ctx.steps.map((s) => s.uid);
     ctx.tasks.forEach((t) => {
-      if (!ctx.taskUnits[t.id].length) ids.push(t.id);
+      // Matches buildRows' uid-assignment rule exactly: only a true leaf
+      // task (no steps of its own, no child tasks either) gets a bar drawn
+      // directly on its own row, so only that case is linkable by its own
+      // task id — a task with children (rolled-up segments are out of scope
+      // for this ticket, see spec.md) has no bar/uid of its own to link.
+      const hasSteps = ctx.taskUnits[t.id].length > 0;
+      const hasChildren = ctx.tasks.some((c) => c.parentTaskId === t.id);
+      if (!hasSteps && !hasChildren) ids.push(t.id);
     });
     return ids;
   }, [ctx.steps, ctx.tasks, ctx.taskUnits]);
@@ -287,7 +426,7 @@ export function FlatGantt() {
     const row = resolveVisibleRow(uid, ctx, sched, rowByUid, rowsById);
     if (!row) return null;
     const s = resolveBar(sched, uid);
-    return { row, pos: barPosForRow(ctx.t0, row, s.start, s.durationDays) };
+    return { row, pos: barPosForRow(ctx.t0, row, s.start, s.durationDays, dw) };
   };
 
   const isGatingRisk = (uid: string): boolean =>
@@ -304,23 +443,65 @@ export function FlatGantt() {
     allLinkableUids.forEach((uid) => {
       const anchored = anchorPos(uid);
       if (!anchored) return;
-      const { pos } = anchored;
+      const { pos, row } = anchored;
+      // A collapsed row's dependency EDGES correctly merge onto the nearest
+      // visible ancestor (resolveVisibleRow) — but that's an edge-routing
+      // concern, not a reason to also show a clickable connect-handle dot
+      // floating at the ancestor's position with no bar underneath it. Once
+      // the Handle itself became a real, visible reactflow dot (this
+      // session's drag-to-connect rework), every hidden uid's anchor kept
+      // rendering one anyway, which is what left dangling circles behind
+      // when a sprint/task collapsed — there's no bar there for the dot to
+      // visually belong to. `row.uid === uid` is only true when this uid's
+      // own real row resolved directly (rowByUid's first check in
+      // resolveVisibleRow) — a borrowed ancestor row never carries the
+      // child's own uid. Only show the connect-handle in the genuine case;
+      // a borrowed-position anchor still exists (edges still need a valid
+      // id to resolve against) but renders invisible and non-connectable,
+      // same shape as the milestone anchors below.
+      const isOwnRow = row.uid === uid;
+      if (!isOwnRow) {
+        nodes.push({
+          id: uid,
+          position: { x: pos.x, y: pos.y },
+          width: 1,
+          height: 1,
+          style: { width: 1, height: 1, opacity: 0, pointerEvents: "none" },
+          draggable: false,
+          selectable: false,
+          connectable: false,
+          data: {},
+        });
+        return;
+      }
       nodes.push({
         id: uid,
         type: "anchor",
         position: { x: pos.x, y: pos.y },
-        width: pos.w,
+        // Widened by HANDLE_RIGHT_PAD past the bar's real right edge so the
+        // Position.Right source Handle (CSS `right: -4px` relative to this
+        // box) lands clear of Bar.tsx's resize grip instead of on top of it
+        // — see HANDLE_RIGHT_PAD's doc comment in DependencyEdges.tsx. The
+        // target Handle (Position.Left) is unaffected since it's offset from
+        // the node's *left* edge, which doesn't move.
+        width: pos.w + HANDLE_RIGHT_PAD,
         height: pos.h,
-        // The node box itself matches the real bar's rect exactly (so
-        // reactflow's Position.Left/Position.Right land the Handles at the
-        // bar's actual edges) but stays fully click-through
-        // (pointerEvents: "none" overrides reactflow's own
+        // The node box itself matches the real bar's rect (plus the handle
+        // pad above) so reactflow's Position.Left/Position.Right land the
+        // Handles at (approximately) the bar's actual edges, but stays fully
+        // click-through (pointerEvents: "none" overrides reactflow's own
         // `.react-flow__node { pointer-events: all }` base rule) — only the
         // small Handle dots (AnchorNode, in DependencyEdges.tsx) get their
         // own pointer-events back, via reactflow's `connectionindicator`
         // class. Without this override the whole bar's area would swallow
         // Bar.tsx's own move/resize pointer-downs underneath it.
-        style: { width: pos.w, height: pos.h, background: "transparent", border: "none", pointerEvents: "none" },
+        style: {
+          width: pos.w + HANDLE_RIGHT_PAD,
+          height: pos.h,
+          background: "transparent",
+          border: "none",
+          pointerEvents: "none",
+        },
         draggable: false,
         selectable: false,
         connectable: true,
@@ -345,7 +526,7 @@ export function FlatGantt() {
     });
     return nodes;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allLinkableUids, ctx, sched, rowByUid, rowsById, milestoneRows, milestoneById, milestonePointById]);
+  }, [allLinkableUids, ctx, sched, rowByUid, rowsById, milestoneRows, milestoneById, milestonePointById, dw]);
 
   const flowEdges: Edge<DepEdgeData>[] = useMemo(() => {
     // Dependency edges are grouped by (resolved source row, resolved target
@@ -450,7 +631,7 @@ export function FlatGantt() {
     });
     return edges;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx, sched, rowByUid, rowsById, milestoneLinks, milestoneById]);
+  }, [ctx, sched, rowByUid, rowsById, milestoneLinks, milestoneById, dw]);
 
   const allIds = useMemo(() => allCollapsibleIds(rows), [rows]);
 
@@ -462,6 +643,11 @@ export function FlatGantt() {
         onCompare={() => setCompareOpen((v) => !v)}
         compareOpen={compareOpen}
         allIds={allIds}
+        dw={dw}
+        onZoomIn={() => setZoom(Math.round(dw * 1.25))}
+        onZoomOut={() => setZoom(Math.round(dw / 1.25))}
+        onZoomFit={zoomFit}
+        onZoomToday={zoomToday}
       />
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <div
@@ -483,7 +669,7 @@ export function FlatGantt() {
             >
               <div style={{ height: AXIS_H, borderBottom: "1px solid #e5e7eb" }} />
               {rows.map((row) => (
-                <RowLabel key={row.id} row={row} state={state} />
+                <RowLabel key={row.id} row={row} state={state} ctx={ctx} sched={sched} />
               ))}
             </div>
             <div ref={chartRef} style={{ position: "relative", width, height: svgHeight }}>
@@ -492,7 +678,19 @@ export function FlatGantt() {
                 <pattern id="revhatch" width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
                   <line x1={0} y1={0} x2={0} y2={6} stroke="rgba(255,255,255,.55)" strokeWidth={2} />
                 </pattern>
+                {/* Critical/expired (past-hard-deadline) hatch — same technique as
+                    revhatch above (diagonal pattern + fill="url(#...)" overlay rect
+                    in Bar.tsx), but its own pattern so the two meanings (review step
+                    vs. gate-violated) stay visually distinguishable when a bar is
+                    both at once. Red stripes over a translucent red wash, mockup's
+                    "solid diagonal-hatch fill" look, tuned for readability without a
+                    running browser to check against. */}
+                <pattern id="crithatch" width={7} height={7} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                  <rect width={7} height={7} fill="var(--crit)" fillOpacity={0.18} />
+                  <line x1={0} y1={0} x2={0} y2={7} stroke="var(--crit)" strokeWidth={3} strokeOpacity={0.85} />
+                </pattern>
               </defs>
+              {sprintBands}
               {weekendBands}
               {/* "As of" marker — the adjustable simulation anchor used for risk
                   severity (critical vs expired), NOT a literal today indicator —
@@ -540,13 +738,14 @@ export function FlatGantt() {
                     t0={ctx.t0}
                     chartHeight={svgHeight}
                     rowY={row.y + row.height / 2}
+                    dw={dw}
                   />
                 );
               })}
               {rows.map((row) => {
                 if (!row.uid) return null;
                 const s = resolveBar(sched, row.uid);
-                const pos = barPosForRow(ctx.t0, row, s.start, s.durationDays);
+                const pos = barPosForRow(ctx.t0, row, s.start, s.durationDays, dw);
                 const stepSched = sched.units[row.uid];
                 const b = baselineUnits[row.uid];
                 const moved = stepSched?.moved ?? false;
@@ -555,7 +754,7 @@ export function FlatGantt() {
                     {b && (
                       <GhostBar
                         visible={moved}
-                        pos={barPosForRow(ctx.t0, row, b.start, b.durationDays)}
+                        pos={barPosForRow(ctx.t0, row, b.start, b.durationDays, dw)}
                       />
                     )}
                     <Bar
@@ -577,6 +776,18 @@ export function FlatGantt() {
                   </g>
                 );
               })}
+              {/* Drag-cap explanation label — always rendered (so useBarDrag's
+                  paintFrame can find it via querySelector the same way it
+                  finds `[data-bar]`/`[data-grip]`/`[data-link]` elements) but
+                  hidden by default; paintFrame toggles display and sets the
+                  rect/text attributes imperatively, live, while a drag is
+                  frozen against a boundary. No React state involved, same
+                  reason the rest of this drag loop avoids re-renders mid-
+                  gesture. */}
+              <g data-drag-label="1" style={{ display: "none" }} pointerEvents="none">
+                <rect rx={4} fill="var(--crit)" />
+                <text fill="#fff" fontSize={10.5} fontWeight={600} />
+              </g>
             </svg>
             <DependencyEdgesLayer
               width={width}
@@ -618,7 +829,17 @@ export function FlatGantt() {
   );
 }
 
-function RowLabel({ row, state }: { row: GanttRow; state: RoadmapState }) {
+function RowLabel({
+  row,
+  state,
+  ctx,
+  sched,
+}: {
+  row: GanttRow;
+  state: RoadmapState;
+  ctx: ScheduleContext;
+  sched: ScheduleResult;
+}) {
   const indent = 10 + row.depth * 16;
   return (
     <div
@@ -649,6 +870,22 @@ function RowLabel({ row, state }: { row: GanttRow; state: RoadmapState }) {
         </ActionIcon>
       ) : (
         <span style={{ width: 18, display: "inline-block" }} />
+      )}
+      {row.collapsible && (
+        // User Story 31: per-row "Expand all" — expand just this row's own
+        // subtree, not the whole chart (the existing Toolbar button above
+        // does that already, globally). Separate, additive affordance, not a
+        // replacement for either the row's own toggle or the global button.
+        <Tooltip label="Expand this row and everything beneath it">
+          <ActionIcon
+            size="xs"
+            variant="subtle"
+            onClick={() => state.expandSubtree(collapsibleDescendantIds(ctx, sched, row.id))}
+            aria-label="Expand all beneath this row"
+          >
+            ⇊
+          </ActionIcon>
+        </Tooltip>
       )}
       <div style={{ overflow: "hidden" }}>
         <Text
@@ -712,12 +949,22 @@ function Toolbar({
   onCompare,
   compareOpen,
   allIds,
+  dw,
+  onZoomIn,
+  onZoomOut,
+  onZoomFit,
+  onZoomToday,
 }: {
   state: RoadmapState;
   onCommit: () => void;
   onCompare: () => void;
   compareOpen: boolean;
   allIds: string[];
+  dw: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomFit: () => void;
+  onZoomToday: () => void;
 }) {
   return (
     <Paper p="xs" radius={0} withBorder style={{ borderLeft: 0, borderRight: 0, borderTop: 0 }}>
@@ -749,6 +996,21 @@ function Toolbar({
           <Button size="xs" variant="subtle" onClick={() => state.collapseAll()}>
             Collapse all
           </Button>
+          <Button size="xs" variant="default" onClick={onZoomOut}>
+            Zoom out
+          </Button>
+          <Button size="xs" variant="default" onClick={onZoomIn}>
+            Zoom in
+          </Button>
+          <Button size="xs" variant="default" onClick={onZoomFit}>
+            Zoom to fit
+          </Button>
+          <Button size="xs" variant="default" onClick={onZoomToday}>
+            Zoom to today
+          </Button>
+          <Text size="xs" c="dimmed">
+            {Math.round((dw / 12) * 100)}%
+          </Text>
           <Button
             size="xs"
             variant={state.linkMode ? "filled" : "default"}
