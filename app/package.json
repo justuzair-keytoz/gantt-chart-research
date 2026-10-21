@@ -1,7 +1,7 @@
 {
   "name": "gantt-roadmap-sim",
-  "version": "0.1.0",
-  "description": "v0 — standalone prototype ported from ../prototype/. See ./README.md and docs/gantt-chart/spec/v1/ in the repo root.",
+  "version": "0.2.0",
+  "description": "v0 — standalone prototype ported from ../prototype/. Implements docs/gantt-chart/spec/v1/ fully and the first slice of docs/gantt-chart/spec/v2/ (nesting, zoom, sprint bands) — see ./README.md and ./CHANGELOG.md.",
   "private": true,
   "scripts": {
     "dev": "next dev -p 4000",
