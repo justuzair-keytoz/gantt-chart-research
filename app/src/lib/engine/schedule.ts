@@ -318,28 +318,92 @@ export function computeSchedule(
     s.spillTo = cs ? cs.name : "unplanned";
   });
 
-  // task-level roll-up (derived from steps, not stored independently)
+  // task-level roll-up (derived from steps and/or child-task roll-ups, not
+  // stored independently). Recursive rather than a single forEach pass over
+  // ctx.tasks: a parent's own TaskRollup can depend on its children's
+  // TaskRollups, and ctx.tasks (flattened from the seed/userTasks arrays) is
+  // in no particular parent-before-child order, so this can't be computed in
+  // one array pass the way the pre-nesting version did. Memoized so each
+  // task's rollup is only actually computed once regardless of how many
+  // times it's reached as someone else's child.
   const tasks: Record<string, TaskRollup> = {};
-  ctx.tasks.forEach((t) => {
-    const unitUids = ctx.taskUnits[t.id];
-    if (!unitUids.length) {
-      // Plain-bar task: no steps yet, roll-up is its own direct dates.
-      const start = parseISO(ov.starts[t.id] ?? ctx.baseStarts[t.id] ?? t.startDate);
-      const defaultDur = t.dueDate
-        ? diffDays(parseISO(t.dueDate), parseISO(t.startDate)) + 1
-        : 3;
-      const dur = ov.durations[t.id] ?? ctx.baseDurations[t.id] ?? defaultDur;
-      tasks[t.id] = { start, end: stepEnd(start, dur), moved: false, slip: 0 };
-      return;
+  const visiting = new Set<string>();
+  const childrenOf = (taskId: string): TaskDef[] =>
+    ctx.tasks.filter((t) => t.parentTaskId === taskId);
+
+  const plainBarRollup = (t: TaskDef): TaskRollup => {
+    // Plain-bar task: no steps, no children — roll-up is its own direct dates.
+    const start = parseISO(ov.starts[t.id] ?? ctx.baseStarts[t.id] ?? t.startDate);
+    const defaultDur = t.dueDate
+      ? diffDays(parseISO(t.dueDate), parseISO(t.startDate)) + 1
+      : 3;
+    const dur = ov.durations[t.id] ?? ctx.baseDurations[t.id] ?? defaultDur;
+    return { start, end: stepEnd(start, dur), moved: false, slip: 0 };
+  };
+
+  const rollupFor = (t: TaskDef): TaskRollup => {
+    if (tasks[t.id]) return tasks[t.id];
+    if (visiting.has(t.id)) {
+      // Defensive cycle guard: mock/user-authored data has no legitimate way
+      // to form a parentTaskId cycle, but a corrupt localStorage edit
+      // shouldn't be able to turn this into infinite recursion — fall back
+      // to this task's own plain-bar dates instead of chasing its own tail.
+      return plainBarRollup(t);
     }
-    const us = unitUids.map((uid) => out[uid]);
-    tasks[t.id] = {
-      start: us[0].start,
-      end: us[us.length - 1].end,
-      moved: us.some((x) => x.moved),
-      slip: us[us.length - 1].slip,
-    };
-  });
+    visiting.add(t.id);
+
+    const unitUids = ctx.taskUnits[t.id];
+    const own: TaskRollup | null = unitUids.length
+      ? (() => {
+          const us = unitUids.map((uid) => out[uid]);
+          return {
+            start: us[0].start,
+            end: us[us.length - 1].end,
+            moved: us.some((x) => x.moved),
+            slip: us[us.length - 1].slip,
+          };
+        })()
+      : null;
+
+    const kids = childrenOf(t.id);
+    const fromKids: TaskRollup | null = kids.length
+      ? (() => {
+          const rs = kids.map((k) => rollupFor(k));
+          return {
+            start: new Date(Math.min(...rs.map((r) => r.start.getTime()))),
+            end: new Date(Math.max(...rs.map((r) => r.end.getTime()))),
+            moved: rs.some((r) => r.moved),
+            slip: Math.max(...rs.map((r) => r.slip)),
+          };
+        })()
+      : null;
+
+    // Combined rollup when a task has BOTH its own steps and children (e.g.
+    // a parent that does some planning work itself, then fans out to real
+    // subtasks): span the wider of the two, moved/slip take the
+    // more-attention-worthy side rather than silently favoring one.
+    let result: TaskRollup;
+    if (own && fromKids) {
+      result = {
+        start: own.start < fromKids.start ? own.start : fromKids.start,
+        end: own.end > fromKids.end ? own.end : fromKids.end,
+        moved: own.moved || fromKids.moved,
+        slip: Math.max(own.slip, fromKids.slip),
+      };
+    } else if (own) {
+      result = own;
+    } else if (fromKids) {
+      result = fromKids;
+    } else {
+      result = plainBarRollup(t);
+    }
+
+    visiting.delete(t.id);
+    tasks[t.id] = result;
+    return result;
+  };
+
+  ctx.tasks.forEach((t) => rollupFor(t));
 
   const risks: Risk[] = [];
   const msById: Record<string, Milestone> = {};

@@ -38,6 +38,17 @@ export interface TaskDef {
    * task's rolled-up start/end is derived from its steps instead.
    */
   dueDate?: string;
+  /**
+   * Parent task id, or null/absent for a root task (v2 nesting-to-any-depth
+   * decision, see docs/gantt-chart/spec/v2/spec.md's "The generic tree uses
+   * parentTask/subtasks" section). Named `parentTaskId` rather than the real
+   * Strapi schema's `parentTask` because this mock engine stores relations
+   * as plain id references everywhere else too (e.g. `milestone` above is a
+   * ` string | null` id, not a `Milestone` object) — same convention, not a
+   * new one. A child task is a full TaskDef in its own right: it can carry
+   * its own `path`/`milestone`/`dueDate`, and can itself be a parent.
+   */
+  parentTaskId?: string | null;
 }
 
 /** A flattened, schedulable Step (the engine's actual unit). */
