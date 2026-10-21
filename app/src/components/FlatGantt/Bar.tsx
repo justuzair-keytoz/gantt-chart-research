@@ -66,6 +66,24 @@ export function Bar(props: {
           pointerEvents="none"
         />
       )}
+      {/* Past-hard-deadline fill, mockup's "solid diagonal-hatch" look for the
+          critical/expired risk state — layered on top of (not instead of) the
+          review hatch above, so a step that's both a review step AND past its
+          gate shows both patterns rather than one hiding the other (crithatch's
+          own red tint vs. revhatch's white stripes keep them readable
+          together). The existing dashed red outline below is kept too — it's
+          what a prior round's "broken-dashed-red" fix (spec.md) already
+          established as the gate-violated signal; the hatch is additive
+          styling, not a replacement for it. */}
+      {(outline === "critical" || outline === "expired") && (
+        <rect
+          width={pos.w}
+          height={pos.h}
+          rx={4}
+          fill="url(#crithatch)"
+          pointerEvents="none"
+        />
+      )}
       {pos.w > 28 && (
         <text x={6} y={pos.h - 7} fontSize={10.5} fill="#fff" pointerEvents="none">
           {props.label}
