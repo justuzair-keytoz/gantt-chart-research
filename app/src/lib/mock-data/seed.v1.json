@@ -67,7 +67,17 @@
         "steps": [["draft", 3], ["review", 1], ["send", 1]] }] },
     { "id": "OAK-190", "name": "Final lender sign-off", "startDate": "2026-11-23", "milestone": "cod",
       "path": [{ "stage": "marketing", "assignee": "priya", "reviewer": "sam", "stakeholders": ["Lender", "CFO"],
-        "steps": [["draft", 2], ["review", 2], ["send", 1]] }] }
+        "steps": [["draft", 2], ["review", 2], ["send", 1]] }] },
+
+    { "id": "OAK-200", "name": "Regional rollout coordination", "startDate": "2026-10-19", "milestone": null,
+      "path": [{ "stage": "planning", "assignee": "ana", "reviewer": null, "stakeholders": ["Client PM"],
+        "steps": [["scope", 2]] }] },
+    { "id": "OAK-201", "name": "EU rollout", "startDate": "2026-10-21", "milestone": null, "parentTaskId": "OAK-200",
+      "path": [{ "stage": "design", "assignee": "lee", "reviewer": "ana", "stakeholders": [],
+        "steps": [["design", 3]] }] },
+    { "id": "OAK-202", "name": "EU rollout - translations", "startDate": "2026-10-23", "milestone": null, "parentTaskId": "OAK-201",
+      "path": [{ "stage": "development", "assignee": "ravi", "reviewer": "sam", "stakeholders": [],
+        "steps": [["build", 2]] }] }
   ],
   "links": [
     ["OAK-160:planning:review", "OAK-150:design:design"],

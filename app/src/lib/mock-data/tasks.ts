@@ -22,6 +22,8 @@ interface SeedTask {
   startDate: string;
   milestone: string | null;
   path: SeedPathSegment[];
+  /** v2 nesting (see data-shape-mapping.md's parentTask/subtasks section). */
+  parentTaskId?: string | null;
 }
 
 export const BASE_SPRINTS: Sprint[] = seed.sprints as Sprint[];
@@ -33,6 +35,7 @@ export const BASE_TASKS: TaskDef[] = (seed.tasks as SeedTask[]).map((t) => ({
   name: t.name,
   startDate: t.startDate,
   milestone: t.milestone,
+  parentTaskId: t.parentTaskId ?? null,
   path: t.path.map(
     (seg): PathSegment => ({
       stage: seg.stage as StageId,
