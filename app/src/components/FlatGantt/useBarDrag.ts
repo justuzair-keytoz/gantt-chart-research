@@ -10,7 +10,7 @@ import { computeSchedule, type ScheduleContext } from "@/lib/engine/schedule";
 import { addDays, diffDays, fmt, parseISO, toISO } from "@/lib/engine/date-utils";
 import type { Overlay, ScheduleResult, StepSchedule } from "@/lib/engine/types";
 import { barPosForRow, type GanttRow } from "./layout";
-import { elbowPath, HANDLE_RIGHT_PAD, milestonePath, type Point } from "./DependencyEdges";
+import { elbowPath, milestonePath, type Point } from "./DependencyPaths";
 import { resolveVisibleRow } from "./resolveLinkEndpoint";
 
 /** A step/task → milestone gating relationship: the milestone end is a fixed
@@ -83,8 +83,6 @@ export function resolveBar(sched: ScheduleResult, uid: string): { start: Date; e
 
 export function useBarDrag(opts: {
   svgRef: React.RefObject<SVGSVGElement>;
-  /** Wrapper div containing both the SVG and the reactflow edges layer — scopes the paint-frame's edge query instead of searching the whole document. */
-  chartRef: React.RefObject<HTMLDivElement>;
   ctx: ScheduleContext;
   /** Current day-column width (v2: zoom state, owned by FlatGantt.tsx) — read live off opts, not captured at hook-setup time. */
   dw: number;
@@ -92,7 +90,7 @@ export function useBarDrag(opts: {
   asOf: string;
   baselineUnits: Record<string, StepSchedule> | null;
   rowByUid: Record<string, GanttRow>;
-  /** All rows keyed by row id — used to climb to a hidden link endpoint's nearest visible ancestor row (collapsed sprint/task), same resolution as flowEdges in FlatGantt.tsx. */
+  /** All rows keyed by row id — used to climb to a hidden link endpoint's nearest visible ancestor row (collapsed sprint/task), matching FlatGantt's dependency paths. */
   rowsById: Record<string, GanttRow>;
   milestoneLinks: MilestoneLink[];
   onCommit: (
@@ -108,15 +106,6 @@ export function useBarDrag(opts: {
     (sched: ScheduleResult, violation?: { uid: string; violated: boolean; reason?: string }) => {
       const svg = opts.svgRef.current;
       if (!svg) return;
-      // Dependency edges now render via reactflow (DependencyEdgesLayer), a
-      // sibling DOM subtree outside `svg`, so this scopes to the shared
-      // chart wrapper (both the SVG and the edges layer live under it)
-      // rather than svgRef — same `[data-link]` attribute/id convention as
-      // before, just no longer inside this SVG. Looked up up-front (not just
-      // before the edge-patching code below) so the per-uid loop can also
-      // reach into it to keep each bar's reactflow anchor node glued to it
-      // live, same as the bar/grip themselves.
-      const chart = opts.chartRef.current;
       Object.entries(opts.rowByUid).forEach(([uid, row]) => {
         const el = svg.querySelector<SVGGElement>(`[data-bar="${CSS.escape(uid)}"]`);
         if (!el) return;
@@ -127,29 +116,7 @@ export function useBarDrag(opts: {
         if (body) body.setAttribute("width", String(pos.w));
         const grip = el.querySelector("[data-grip]");
         if (grip) grip.setAttribute("x", String(pos.w - 6));
-        // Keep the reactflow connect-handle anchor node glued to the bar
-        // during a live drag too. Previously only the plain-SVG bar/grip
-        // above were repainted every pointermove frame (for 60fps, no React
-        // re-render); the anchor nodes (reactflow's own real DOM elements,
-        // `.react-flow__node[data-id="<uid>"]`, see @reactflow/core's
-        // NodeWrapper) only updated on the next React re-render — i.e. only
-        // after the drag committed — so the connect dots visibly lagged
-        // behind a moving/resizing bar mid-gesture. Patched the same
-        // imperative way: reactflow controls this element's `style.transform`
-        // via its own inline style object, but a direct mutation here is
-        // safe exactly like it is for the bar/grip (a later proper React
-        // re-render — on commit — simply overwrites it back to the correct
-        // computed value, same reconciliation already relied on above).
-        // Widened by HANDLE_RIGHT_PAD to match flowNodes' own node width
-        // (see Fix 1 / HANDLE_RIGHT_PAD's doc comment), so the Handle offset
-        // stays consistent during a resize too.
-        const anchor = chart?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(uid)}"]`);
-        if (anchor) {
-          anchor.style.transform = `translate(${pos.x}px,${pos.y}px)`;
-          anchor.style.width = `${pos.w + HANDLE_RIGHT_PAD}px`;
-        }
       });
-      if (!chart) return;
       if (violation) {
         const drag = dragRef.current;
         const el = svg.querySelector<SVGGElement>(`[data-bar="${CSS.escape(violation.uid)}"]`);
@@ -174,7 +141,7 @@ export function useBarDrag(opts: {
         // when taskSpanEnd is what's actually being violated this frame (the
         // dragged bar's outline above already covers the gate/chart cases).
         if (drag?.clashLinkId) {
-          const linkEl = chart.querySelector<SVGPathElement>(`[data-link="${CSS.escape(drag.clashLinkId)}"]`);
+          const linkEl = svg.querySelector<SVGPathElement>(`[data-link="${CSS.escape(drag.clashLinkId)}"]`);
           if (linkEl) {
             if (drag.taskSpanViolated) {
               linkEl.setAttribute("stroke", "var(--crit)");
@@ -233,9 +200,9 @@ export function useBarDrag(opts: {
           }
         }
       }
-      chart.querySelectorAll<SVGPathElement>("[data-link]").forEach((el) => {
+      svg.querySelectorAll<SVGPathElement>("[data-link]").forEach((el) => {
         const [from, to] = (el.dataset.link ?? "").split(">");
-        // Climb to the nearest visible ancestor row exactly like flowEdges
+        // Climb to the nearest visible ancestor row exactly like dependency paths
         // does when building the static edge list — keeps a dragged bar's
         // merged-into-parent line glued to the right row even mid-drag.
         const a = resolveVisibleRow(from, opts.ctx, sched, opts.rowByUid, opts.rowsById);
@@ -248,7 +215,7 @@ export function useBarDrag(opts: {
         el.setAttribute("d", elbowPath(pa, pb));
       });
       opts.milestoneLinks.forEach((ml) => {
-        const el = chart.querySelector<SVGPathElement>(
+        const el = svg.querySelector<SVGPathElement>(
           `[data-link="${CSS.escape(`${ml.uid}>>${ml.milestoneId}`)}"]`,
         );
         const row = resolveVisibleRow(ml.uid, opts.ctx, sched, opts.rowByUid, opts.rowsById);
@@ -403,7 +370,7 @@ export function useBarDrag(opts: {
       const taskSpanEnd = nextSibling ? sched.tasks[taskId].end : null;
       const clashLinkId = nextSibling ? `${uid}>${nextSibling.uid}` : null;
       const linkEl = clashLinkId
-        ? opts.chartRef.current?.querySelector<SVGPathElement>(`[data-link="${CSS.escape(clashLinkId)}"]`)
+        ? opts.svgRef.current?.querySelector<SVGPathElement>(`[data-link="${CSS.escape(clashLinkId)}"]`)
         : null;
 
       dragRef.current = {

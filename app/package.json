@@ -23,7 +23,6 @@
     "tailwindcss": "3.4.1",
     "postcss": "8.4.38",
     "postcss-preset-mantine": "1.15.0",
-    "reactflow": "11.11.4",
     "react-dnd": "16.0.1",
     "react-dnd-html5-backend": "16.0.1"
   },

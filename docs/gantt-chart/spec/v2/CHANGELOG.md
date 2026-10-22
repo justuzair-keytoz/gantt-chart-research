@@ -2,6 +2,24 @@
 
 Tracks what's actually been built against this version's spec ([`spec.md`](./spec.md)), the same way [`v1/CHANGELOG.md`](../v1/CHANGELOG.md) does for v1. Entries are added as tickets get implemented — see [`AGENTS.md`](../../../../AGENTS.md) for the rule.
 
+## 2026-10-21 — correction to ticket 01: link source stays graspable
+
+The first native-SVG pass made the visible source dot conditional on the bar hover state. The owner verified the resulting failure: moving from the bar toward the dot could unmount the dot before the pointer reached it, so a direct link could not reliably begin. This was a real interaction bug, not a React Flow capability gap.
+
+`Bar.tsx` now keeps a 20px transparent, SVG pointer-event hit area mounted for every schedulable step bar. It starts 4px beyond the resize grip and uses pointer capture when pressed; the smaller visible ring is merely hover/source feedback and cannot remove the actual target. This replaces the hover-mounted target, keeps the resize gesture separate, and leaves the native SVG renderer in place.
+
+The same correction also limits highlighted drop targets to scheduler-supported step UIDs; clears an interrupted gesture on cancellation, lost capture, or window blur; and exposes the source control as a keyboard-focusable button that uses the existing two-step linking fallback. An independent critique re-read the interaction after these repairs and found no remaining ship-blocking issue.
+
+The React Flow-era entries below remain as historical failed/partial attempts; they no longer describe live components or the current renderer. The remaining collapsed-endpoint defect is tracked explicitly in ticket 02 and `todo.md`.
+
+## 2026-10-21 — 01 Native dependency paths and direct linking
+
+Closes [ticket 01](./tickets/01-native-dependency-paths-and-direct-linking.md). The date-grid SVG is now the single owner of dependency paths and linking interaction: normal dependencies are neutral arrowed paths, merged groups remain quiet dashed paths, and milestone connectors retain their distinct dashed treatment. Hovering a schedulable step bar reveals a source dot placed clear of its resize grip; pointer-capturing that dot draws a temporary line and drops through the existing `addLink` cycle/duplicate validation. The existing toolbar click-source/click-target fallback remains available.
+
+This replaces the React Flow overlay, invisible mirror nodes, React Flow edge renderer, and drag-time DOM synchronization that kept the overlay aligned with the SVG. `reactflow` is consequently removed from the standalone prototype's dependencies and lockfile; no replacement package was added. Drag, resize, zoom, and collapse continue to repaint the same native SVG `data-link` paths.
+
+**Verification:** `npm run build` completed with zero TypeScript errors. The build and static call-site review confirm that a direct-link affordance is only offered for a schedule step, because the existing engine deliberately schedules dependencies at that level; it cannot create an inert link from a plain task roll-up. Browser-level gesture and visual regression testing remains outstanding because no browser surface was available.
+
 ## 2026-10-21 — NOT RESOLVED: orphaned dots/lines left behind when everything is collapsed
 
 **Correction to the entry directly below this one:** the fix described there did not actually resolve the issue — confirmed by the project owner re-testing after it landed, not assumed fixed because the build passed. Leaving the attempted-fix entry in place rather than deleting it (it's a real, verified-correct change on its own terms — the connect-handle-visibility gap it fixed was real), but the root cause of the scattered circles/tangled lines on full collapse is still open and needs further investigation, this time ideally with an actual browser/screenshot in hand rather than reasoning from code alone a second time. Not yet re-diagnosed as of this entry.

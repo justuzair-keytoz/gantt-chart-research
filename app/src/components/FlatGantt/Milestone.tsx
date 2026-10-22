@@ -4,7 +4,7 @@
 // the milestone's own stored `color` (not a fixed palette) — per
 // docs/gantt-chart/02-spec-roadmap-simulation.md. The dashed connector
 // lines from each gating task used to be drawn here too (inline SVG paths);
-// they now draw via the shared reactflow mechanism in DependencyEdges.tsx —
+// they now draw via the shared native SVG dependency layer —
 // see FlatGantt.tsx's milestone edge-building — so this component only
 // owns the diamond shape, the guide line, and the label.
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import type { Risk } from "@/lib/engine/types";
 import type { BarPos } from "./layout";
 
@@ -26,10 +28,17 @@ export function Bar(props: {
   review: boolean;
   risks: Risk[];
   linkSource: boolean;
+  linkTarget: boolean;
+  linkable: boolean;
   resizable: boolean;
   onPointerDown: (e: React.PointerEvent, kind: "move" | "resize") => void;
+  onLinkPointerDown: (e: React.PointerEvent) => void;
+  onLinkActivate: () => void;
+  onLinkCancel: () => void;
 }) {
   const { pos } = props;
+  const [linkHover, setLinkHover] = useState(false);
+  const [linkFocused, setLinkFocused] = useState(false);
   const outline = outlineSeverity(props.risks);
   const hasInfo = props.risks.some((r) => r.sev === "info");
   const fill = props.moved ? "var(--bar-moved)" : props.color;
@@ -40,6 +49,8 @@ export function Bar(props: {
       transform={`translate(${pos.x},${pos.y})`}
       style={{ cursor: "grab" }}
       onPointerDown={(e) => props.onPointerDown(e, "move")}
+      onPointerEnter={() => setLinkHover(true)}
+      onPointerLeave={() => setLinkHover(false)}
     >
       <rect
         className="body"
@@ -105,10 +116,47 @@ export function Bar(props: {
           onPointerDown={(e) => props.onPointerDown(e, "resize")}
         />
       )}
-      {/* Link-start handle circle removed — reactflow's own Handle elements
-          (AnchorNode in DependencyEdges.tsx, positioned over this exact
-          rect) are now the visible drag-to-connect affordance. See
-          spec.md's correction note and useLinkDrag.ts's removal. */}
+      {props.linkable && (
+        <>
+          {/* The hit area never unmounts on hover. Without it, moving from
+              the bar to a hover-only dot can remove the dot before pointer
+              down arrives. It begins beyond the resize grip on purpose. */}
+          <circle
+            cx={pos.w + 14}
+            cy={pos.h / 2}
+            r={10}
+            fill="transparent"
+            pointerEvents="all"
+            style={{ cursor: "crosshair" }}
+            role="button"
+            tabIndex={0}
+            aria-label="Create dependency"
+            onFocus={() => setLinkFocused(true)}
+            onBlur={() => setLinkFocused(false)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                props.onLinkActivate();
+              }
+            }}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              props.onLinkPointerDown(event);
+            }}
+            onLostPointerCapture={props.onLinkCancel}
+          />
+          {(linkHover || linkFocused || props.linkSource) && <circle
+          cx={pos.w + 14}
+          cy={pos.h / 2}
+          r={4.5}
+          fill="#fff"
+          stroke={props.linkSource ? "#1d4ed8" : "#94a3b8"}
+          strokeWidth={1.5}
+          pointerEvents="none"
+        />}
+        </>
+      )}
+      {props.linkTarget && <rect x={-2} y={-2} width={pos.w + 4} height={pos.h + 4} rx={6} fill="none" stroke="#1d4ed8" strokeWidth={2} pointerEvents="none" />}
     </g>
   );
 }

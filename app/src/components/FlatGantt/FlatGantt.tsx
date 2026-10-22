@@ -28,8 +28,6 @@ import { DAYS, OUT_PRESETS, T0, TODAY } from "@/lib/mock-data";
 import { useRoadmapStore, type RoadmapState } from "@/lib/store/useRoadmapStore";
 import { buildContext } from "@/lib/store/deriveContext";
 
-import type { Edge, Node } from "reactflow";
-
 import {
   AXIS_H,
   DEFAULT_DW,
@@ -47,7 +45,7 @@ import {
 import { Bar, GhostBar } from "./Bar";
 import { MilestoneDiamond } from "./Milestone";
 import { resolveBar, useBarDrag, type MilestoneLink } from "./useBarDrag";
-import { DependencyEdgesLayer, HANDLE_RIGHT_PAD, type DepEdgeData } from "./DependencyEdges";
+import { DependencyPaths, type DependencyPath, type Point } from "./DependencyPaths";
 import { resolveVisibleRow } from "./resolveLinkEndpoint";
 import { StepEditor } from "@/components/StepEditor/StepEditor";
 import { CommitDialog } from "@/components/CommitDialog/CommitDialog";
@@ -63,12 +61,13 @@ import {
 export function FlatGantt() {
   const state = useRoadmapStore();
   const svgRef = useRef<SVGSVGElement>(null);
-  const chartRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastPointer = useRef({ x: 0, y: 0 });
   const [selected, setSelected] = useState<{ uid: string; x: number; y: number } | null>(null);
   const [commitOpen, setCommitOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [linking, setLinking] = useState<{ from: string; start: Point; end: Point; target: string | null } | null>(null);
+  const linkingRef = useRef<typeof linking>(null);
 
   // v2 zoom: day-column width is now state (ported from prototype/app.js's
   // module-level `let DW`, see setZoom() below), not the old `layout.ts`
@@ -169,6 +168,7 @@ export function FlatGantt() {
       state.userMilestones,
     ],
   );
+  const linkableUids = useMemo(() => new Set(ctx.steps.map((step) => step.uid)), [ctx.steps]);
 
   const baselineUnits = useMemo(
     () => computeSchedule(ctx, emptyOverlay(), state.asOf, null).units,
@@ -211,7 +211,7 @@ export function FlatGantt() {
   }, [ctx.milestones]);
 
   // Each milestone's due-date X / row-center Y, computed once and shared by
-  // milestoneLinks' connector targets and flowNodes' anchor positions below
+  // milestoneLinks' connector targets and dependency-path positions below
   // — computing this twice from the same row+due-date inputs risked the two
   // silently drifting apart after a future edit to either formula.
   const milestonePointById = useMemo(() => {
@@ -243,7 +243,7 @@ export function FlatGantt() {
           // No visibility check here — a gating task hidden behind a
           // collapsed sprint/task still gates the milestone; its connector
           // just resolves to the nearest visible ancestor row (see
-          // flowEdges' use of resolveVisibleRow below) instead of vanishing.
+          // dependency-path resolution below) instead of vanishing.
           out.push({ uid, milestoneId: m.id, target });
         });
     });
@@ -252,7 +252,6 @@ export function FlatGantt() {
 
   const drag = useBarDrag({
     svgRef,
-    chartRef,
     ctx,
     dw,
     getOverlay: () => state.activeScenario().ov,
@@ -271,9 +270,8 @@ export function FlatGantt() {
       // Click-source-then-click-target fallback gesture (toggled by the
       // "Add link" toolbar button): previously wired through the now-
       // removed link-handle circle's onPointerDown (`props.onLinkHandle()`
-      // in the pre-reactflow-connect Bar.tsx); that was this gesture's only
-      // entry point, so removing the circle for reactflow's own Handle
-      // elements would have silently killed it too. Re-wired here, onto the
+      // in the old Bar.tsx); that was this gesture's only entry point, so
+      // keeping the fallback here preserves it alongside direct linking.
       // bar body's own existing click-without-drag detection (useBarDrag
       // already distinguishes a plain click from a drag), gated on linkMode
       // so normal clicks still open the Step Editor when not in link mode.
@@ -400,28 +398,6 @@ export function FlatGantt() {
 
   const asOfX = xForDate(T0, parseISO(state.asOf), dw);
 
-  // Every linkable unit (step, or plain-bar task) gets an anchor node
-  // regardless of whether its own row is currently visible — a hidden one's
-  // *position* is projected onto its nearest visible ancestor row (see
-  // resolveVisibleRow) rather than the node being omitted, which is what
-  // lets a dependency/milestone line "merge into the parent" instead of
-  // vanishing when a sprint or task is collapsed (spec.md's "Correction,
-  // dependency and milestone-gating lines merge with the row tree" note).
-  const allLinkableUids = useMemo(() => {
-    const ids = ctx.steps.map((s) => s.uid);
-    ctx.tasks.forEach((t) => {
-      // Matches buildRows' uid-assignment rule exactly: only a true leaf
-      // task (no steps of its own, no child tasks either) gets a bar drawn
-      // directly on its own row, so only that case is linkable by its own
-      // task id — a task with children (rolled-up segments are out of scope
-      // for this ticket, see spec.md) has no bar/uid of its own to link.
-      const hasSteps = ctx.taskUnits[t.id].length > 0;
-      const hasChildren = ctx.tasks.some((c) => c.parentTaskId === t.id);
-      if (!hasSteps && !hasChildren) ids.push(t.id);
-    });
-    return ids;
-  }, [ctx.steps, ctx.tasks, ctx.taskUnits]);
-
   const anchorPos = (uid: string): { row: GanttRow; pos: ReturnType<typeof barPosForRow> } | null => {
     const row = resolveVisibleRow(uid, ctx, sched, rowByUid, rowsById);
     if (!row) return null;
@@ -432,103 +408,7 @@ export function FlatGantt() {
   const isGatingRisk = (uid: string): boolean =>
     !!sched.units[uid]?.risks.some((r) => r.sev === "critical" || r.sev === "expired");
 
-  // Dependency lines (step↔step, task↔task via effectiveDeps — same source
-  // as before) and task→milestone connector lines now draw through one
-  // shared mechanism: reactflow, via DependencyEdgesLayer. Anchor nodes
-  // carry no visuals (the bars/diamonds still render in this component's own
-  // SVG below); edges carry their own BarPos-derived endpoints in `data` so
-  // reactflow draws against this app's date grid, not its own layout.
-  const flowNodes: Node[] = useMemo(() => {
-    const nodes: Node[] = [];
-    allLinkableUids.forEach((uid) => {
-      const anchored = anchorPos(uid);
-      if (!anchored) return;
-      const { pos, row } = anchored;
-      // A collapsed row's dependency EDGES correctly merge onto the nearest
-      // visible ancestor (resolveVisibleRow) — but that's an edge-routing
-      // concern, not a reason to also show a clickable connect-handle dot
-      // floating at the ancestor's position with no bar underneath it. Once
-      // the Handle itself became a real, visible reactflow dot (this
-      // session's drag-to-connect rework), every hidden uid's anchor kept
-      // rendering one anyway, which is what left dangling circles behind
-      // when a sprint/task collapsed — there's no bar there for the dot to
-      // visually belong to. `row.uid === uid` is only true when this uid's
-      // own real row resolved directly (rowByUid's first check in
-      // resolveVisibleRow) — a borrowed ancestor row never carries the
-      // child's own uid. Only show the connect-handle in the genuine case;
-      // a borrowed-position anchor still exists (edges still need a valid
-      // id to resolve against) but renders invisible and non-connectable,
-      // same shape as the milestone anchors below.
-      const isOwnRow = row.uid === uid;
-      if (!isOwnRow) {
-        nodes.push({
-          id: uid,
-          position: { x: pos.x, y: pos.y },
-          width: 1,
-          height: 1,
-          style: { width: 1, height: 1, opacity: 0, pointerEvents: "none" },
-          draggable: false,
-          selectable: false,
-          connectable: false,
-          data: {},
-        });
-        return;
-      }
-      nodes.push({
-        id: uid,
-        type: "anchor",
-        position: { x: pos.x, y: pos.y },
-        // Widened by HANDLE_RIGHT_PAD past the bar's real right edge so the
-        // Position.Right source Handle (CSS `right: -4px` relative to this
-        // box) lands clear of Bar.tsx's resize grip instead of on top of it
-        // — see HANDLE_RIGHT_PAD's doc comment in DependencyEdges.tsx. The
-        // target Handle (Position.Left) is unaffected since it's offset from
-        // the node's *left* edge, which doesn't move.
-        width: pos.w + HANDLE_RIGHT_PAD,
-        height: pos.h,
-        // The node box itself matches the real bar's rect (plus the handle
-        // pad above) so reactflow's Position.Left/Position.Right land the
-        // Handles at (approximately) the bar's actual edges, but stays fully
-        // click-through (pointerEvents: "none" overrides reactflow's own
-        // `.react-flow__node { pointer-events: all }` base rule) — only the
-        // small Handle dots (AnchorNode, in DependencyEdges.tsx) get their
-        // own pointer-events back, via reactflow's `connectionindicator`
-        // class. Without this override the whole bar's area would swallow
-        // Bar.tsx's own move/resize pointer-downs underneath it.
-        style: {
-          width: pos.w + HANDLE_RIGHT_PAD,
-          height: pos.h,
-          background: "transparent",
-          border: "none",
-          pointerEvents: "none",
-        },
-        draggable: false,
-        selectable: false,
-        connectable: true,
-        data: {},
-      });
-    });
-    milestoneRows.forEach((row) => {
-      const m = milestoneById[row.milestoneId!];
-      const point = m && milestonePointById[m.id];
-      if (!m || !point) return;
-      nodes.push({
-        id: `milestone::${m.id}`,
-        position: point,
-        width: 1,
-        height: 1,
-        style: { width: 1, height: 1, opacity: 0, pointerEvents: "none" },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-        data: {},
-      });
-    });
-    return nodes;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allLinkableUids, ctx, sched, rowByUid, rowsById, milestoneRows, milestoneById, milestonePointById, dw]);
-
-  const flowEdges: Edge<DepEdgeData>[] = useMemo(() => {
+  const dependencyPaths: DependencyPath[] = useMemo(() => {
     // Dependency edges are grouped by (resolved source row, resolved target
     // row) rather than emitted one-per-original-link — several hidden steps
     // climbing to the same collapsed ancestor row must render as ONE merged
@@ -561,20 +441,13 @@ export function FlatGantt() {
         }
       });
     });
-    const edges: Edge<DepEdgeData>[] = [];
+    const edges: DependencyPath[] = [];
     groups.forEach((g) => {
       const single = g.originals.length === 1 ? g.originals[0] : null;
       const source = single?.from ?? g.originals[0].from;
       const target = single?.to ?? g.originals[0].to;
-      // The id must stay in the `<uid>><uid>` shape (a real, always-
-      // registered anchor uid, not the resolved row id used only for
-      // grouping) — useBarDrag.ts's live-drag repaint parses this id back
-      // into uids via resolveVisibleRow, the same way this memo does.
       edges.push({
         id: `${source}>${target}`,
-        source,
-        target,
-        type: "dependency",
         data: {
           kind: "elbow",
           sourcePos: g.sourcePos,
@@ -601,12 +474,6 @@ export function FlatGantt() {
       const clash = isGatingRisk(ml.uid);
       const existing = msGroups.get(key);
       if (existing) existing.clash = existing.clash || clash;
-      // `uid` must be a real, always-registered anchor-node id (reactflow
-      // drops an edge whose source/target isn't a known node) — the
-      // resolved row id used for grouping is NOT itself a node id once the
-      // group represents a collapsed task/sprint row, so a representative
-      // original uid is used instead; the custom edge still draws from
-      // `sourcePos`/`targetPos`, never from this node's real position.
       else msGroups.set(key, { sourcePos: a.pos, milestoneId: ml.milestoneId, clash, uid: ml.uid });
     });
     msGroups.forEach((g) => {
@@ -615,9 +482,6 @@ export function FlatGantt() {
       if (!target) return;
       edges.push({
         id: `${g.uid}>>${g.milestoneId}`,
-        source: g.uid,
-        target: `milestone::${g.milestoneId}`,
-        type: "dependency",
         data: {
           kind: "milestone",
           sourcePos: g.sourcePos,
@@ -630,10 +494,60 @@ export function FlatGantt() {
       });
     });
     return edges;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, sched, rowByUid, rowsById, milestoneLinks, milestoneById, dw]);
 
   const allIds = useMemo(() => allCollapsibleIds(rows), [rows]);
+
+  const pointForPointer = useCallback((clientX: number, clientY: number): Point | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    return { x: ((clientX - rect.left) * width) / rect.width, y: ((clientY - rect.top) * svgHeight) / rect.height };
+  }, [width, svgHeight]);
+
+  const startLink = useCallback((event: React.PointerEvent, from: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = pointForPointer(event.clientX, event.clientY);
+    if (!point) return;
+    const next = { from, start: point, end: point, target: null };
+    linkingRef.current = next;
+    setLinking(next);
+  }, [pointForPointer]);
+
+  const cancelLink = useCallback(() => {
+    linkingRef.current = null;
+    setLinking(null);
+  }, []);
+
+  useEffect(() => {
+    if (!linking?.from) return;
+    const update = (event: PointerEvent) => {
+      const point = pointForPointer(event.clientX, event.clientY);
+      if (!point) return;
+      const element = document.elementFromPoint(event.clientX, event.clientY);
+      const candidate = element?.closest<SVGGElement>("[data-bar]")?.dataset.bar ?? null;
+      const target = candidate && linkableUids.has(candidate) ? candidate : null;
+      const next = { ...linkingRef.current!, end: point, target: target === linkingRef.current?.from ? null : target };
+      linkingRef.current = next;
+      setLinking(next);
+    };
+    const finish = () => {
+      const current = linkingRef.current;
+      cancelLink();
+      if (current?.target) state.addLink(current.from, current.target);
+    };
+    window.addEventListener("pointermove", update);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", cancelLink, { once: true });
+    window.addEventListener("blur", cancelLink, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", update);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", cancelLink);
+      window.removeEventListener("blur", cancelLink);
+    };
+  }, [cancelLink, linking?.from, linkableUids, pointForPointer, state.addLink]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -672,9 +586,12 @@ export function FlatGantt() {
                 <RowLabel key={row.id} row={row} state={state} ctx={ctx} sched={sched} />
               ))}
             </div>
-            <div ref={chartRef} style={{ position: "relative", width, height: svgHeight }}>
+            <div style={{ position: "relative", width, height: svgHeight }}>
             <svg ref={svgRef} width={width} height={svgHeight}>
               <defs>
+                <marker id="dependency-arrow" viewBox="0 0 8 8" refX={7} refY={4} markerWidth={5} markerHeight={5} orient="auto">
+                  <path d="M0,0 L8,4 L0,8 Z" fill="currentColor" />
+                </marker>
                 <pattern id="revhatch" width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
                   <line x1={0} y1={0} x2={0} y2={6} stroke="rgba(255,255,255,.55)" strokeWidth={2} />
                 </pattern>
@@ -728,6 +645,17 @@ export function FlatGantt() {
                   />
                 ) : null,
               )}
+              <DependencyPaths edges={dependencyPaths} onRemoveLink={state.removeLink} />
+              {linking && (
+                <path
+                  d={`M${linking.start.x},${linking.start.y} L${linking.end.x},${linking.end.y}`}
+                  stroke="#1d4ed8"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  fill="none"
+                  pointerEvents="none"
+                />
+              )}
               {milestoneRows.map((row) => {
                 const m = milestoneById[row.milestoneId!];
                 if (!m) return null;
@@ -766,12 +694,17 @@ export function FlatGantt() {
                       done={stepSched?.done ?? false}
                       review={ctx.stepByUid[row.uid]?.review ?? false}
                       risks={stepSched?.risks ?? []}
-                      linkSource={state.linkFrom === row.uid}
+                      linkSource={state.linkFrom === row.uid || linking?.from === row.uid}
+                      linkTarget={linking?.target === row.uid}
+                      linkable={!!stepSched}
                       resizable={!!stepSched}
                       onPointerDown={(e, kind) => {
                         lastPointer.current = { x: e.clientX, y: e.clientY };
                         drag.onPointerDown(e, row.uid!, kind);
                       }}
+                      onLinkPointerDown={(event) => startLink(event, row.uid!)}
+                      onLinkActivate={() => state.handleLinkClick(row.uid!)}
+                      onLinkCancel={cancelLink}
                     />
                   </g>
                 );
@@ -789,14 +722,6 @@ export function FlatGantt() {
                 <text fill="#fff" fontSize={10.5} fontWeight={600} />
               </g>
             </svg>
-            <DependencyEdgesLayer
-              width={width}
-              height={svgHeight}
-              nodes={flowNodes}
-              edges={flowEdges}
-              onRemoveLink={state.removeLink}
-              onConnect={state.addLink}
-            />
             </div>
           </div>
         </div>

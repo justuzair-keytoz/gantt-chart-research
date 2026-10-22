@@ -7,7 +7,7 @@ Each iteration gets its own folder here — `v1/`, `v2/`, and so on. A version f
 | Version | Scope |
 | --- | --- |
 | [v1](./v1/spec.md) | The step/stage/task work model, the scenario engine, risk severity, and everything decided across the grilling sessions — built as a standalone Next.js prototype (`app/`, tagged v0) on fake data, no backend wiring |
-| [v2](./v2/spec.md) | Arbitrary-depth nesting with rolled-up bars on collapse, sprints as calendar bands instead of container rows, a human-readable reason model for schedule changes, a rule-driven "Blocked" model beyond date overlap, and pinch-to-zoom — triggered by PM/user feedback on the running v1 app and a code-level review of v1 itself. No tickets written yet. |
+| [v2](./v2/spec.md) | Arbitrary-depth nesting with rolled-up bars on collapse, sprints as calendar bands instead of container rows, a human-readable reason model for schedule changes, a rule-driven "Blocked" model beyond date overlap, and pinch-to-zoom — triggered by PM/user feedback on the running v1 app and a code-level review of v1 itself. Tickets 01–02 now exist; see the [implementation status](./v2/IMPLEMENTATION-STATUS.md) for the completed native dependency slice and next frontier. |
 
 ## The rule for starting a new version
 
