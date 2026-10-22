@@ -2,6 +2,14 @@
 
 Tracks what's actually been built against this version's spec ([`spec.md`](./spec.md)), the same way [`v1/CHANGELOG.md`](../v1/CHANGELOG.md) does for v1. Entries are added as tickets get implemented — see [`AGENTS.md`](../../../../AGENTS.md) for the rule.
 
+## 2026-10-22 — 02 Task-only row tree and stable bar placement
+
+Closes [ticket 02](./tickets/02-task-only-row-tree-and-stable-bar-placement.md). The left Gantt pane now renders only the Task → Subtask → Step hierarchy; it no longer groups work under a sprint chosen from a step's computed end date, and the synthetic Unscheduled row is removed with it. This replaces the prior sprint-derived row placement that made a date drag look like an automatic deferral. Sprint bands remain in the timeline only, with their labels in a dedicated strip between the date header and work rows; milestone rows remain chronological after the hierarchy.
+
+The existing `expanded` persistence field now migrates old `<sprint>::<task>` row ids to task-only ids. An intentionally collapsed saved tree remains collapsed, while an opened legacy sprint seeds the root task rows so its work stays visible. The migration changes no task, schedule, link, milestone, or scenario data. A dependency-free Node test covers collapsed, sprint, nested, and unscheduled migration inputs.
+
+**Verification:** `npm test`, `npm run build`, and `git diff --check` passed. An independent Ponytail critique found and verified fixes for persistence state and sprint/date-label collisions. **Not verified:** no live browser/profile migration or drag interaction was observed after the final changes. The data-model half of commitment versus position, spill styling, capacity allocation, and explicit defer remain unbuilt; ticket 03 separately owns arbitrary-depth hidden-endpoint projection and dependency explanation.
+
 ## 2026-10-21 — correction to ticket 01: link source stays graspable
 
 The first native-SVG pass made the visible source dot conditional on the bar hover state. The owner verified the resulting failure: moving from the bar toward the dot could unmount the dot before the pointer reached it, so a direct link could not reliably begin. This was a real interaction bug, not a React Flow capability gap.
@@ -67,6 +75,8 @@ Closes the specific visual gap named by the owner's mockup: a task past a hard d
 ## 2026-10-21 — sprint calendar bands (additive band only, row question still open)
 
 Builds the DECIDED half of spec.md's "Sprints render as calendar bands, flat bars underneath" entry: a tinted full-height column band per real sprint, drawn directly on the calendar/date-axis area. Explicitly does NOT touch whether a sprint also keeps its own collapsible row in the tree — that's still OPEN per `todo.md`'s first bullet, and `app/src/components/FlatGantt/layout.ts`'s `buildRows()` sprint-row grouping/collapsing logic was not modified at all. This is the additive-band-only scope named in `todo.md`.
+
+**Superseded by ticket 02 on 2026-10-22:** the owner settled the open row question in favor of the original prototype's model. Sprint and unscheduled rows are now removed; the bands remain, but their labels live in a dedicated timeline strip rather than below a sprint-row header. The detail below records the state of this earlier additive pass, not the current implementation.
 
 **`app/src/components/FlatGantt/FlatGantt.tsx`:** a new `sprintBands` array is built the same way `weekendBands` already is — iterating `sched.sprints` (filtering out `UNSCHEDULED_ID`, imported from `layout.ts`, the same synthetic bucket other sprint-iterating code in this file already excludes), computing each band's pixel range via the existing `xForDate(T0, date, dw)` helper so it recomputes correctly under the live zoom state (`dw`) from the prior round's zoom work — nothing hardcoded. Each sprint gets a full-height `<rect>` (`y={AXIS_H}` to `svgHeight`) in an alternating two-tone fill (`i % 2 ? "#eef2ff" : "#e0e7ff"`), ported directly from `prototype/app.js`'s own sprint-axis rendering (`i % 2 ? "#eef2ff" : "#e0e7ff"`, confirmed by reading that file), plus a left-aligned `<text>` label with the sprint's name. The label's `y` is deliberately placed below the first sprint-group header row's own height (`AXIS_H + SPRINT_H + 12`, not `AXIS_H + 12`) — the existing per-row highlight rect (`rows.map(...)`'s `fill={row.kind === "sprint" ? "#eef2ff" : "transparent"}`, already in this file) always paints over the very top of the chart for the first row, which is always a sprint header; placing the label there would have made every label invisible underneath that existing opaque fill. `SPRINT_H` and `UNSCHEDULED_ID` were added to this file's existing `layout.ts` import list — no new exports were added to `layout.ts` itself.
 

@@ -21,18 +21,27 @@ The standalone app no longer declares `reactflow`; this is a Gantt-only reversal
 
 **Not verified:** no browser surface was available after the final repair. In particular, manually test normal drag-to-link, resize beside the port, pointer cancellation, keyboard source/target linking, zoom while links exist, and collapsed-row path projection before calling this production-ready.
 
+### 02 — Task-only row tree and stable bar placement
+
+[Ticket 02](./tickets/02-task-only-row-tree-and-stable-bar-placement.md) is complete. The left pane is now the stable Task → Subtask → Step hierarchy; it no longer renders sprint or unscheduled rows. Existing sprint bands and their labels remain timeline context in their own header strip, so dragging or resizing a bar across a band does not relocate its row.
+
+- Root tasks render once, children only beneath their parent, and chronological milestone rows remain after the hierarchy.
+- Persisted expansion paths migrate from the former `<sprint>::<task>` shape. An intentionally collapsed tree remains collapsed; a formerly opened sprint seeds the new root-task tree so work remains visible. Task, link, scenario, milestone, and schedule data are unchanged.
+- `expandedRows.test.ts` covers the migration's collapsed, opened-sprint, nested, and unscheduled cases without adding a test dependency.
+
+**Verified:** `npm test`, `npm run build`, `git diff --check`, and an independent Ponytail review passed on 2026-10-22.
+
+**Not verified:** no live browser pass observed sprint-label alignment, drag continuity, or persisted migration in an existing browser profile.
+
 ## Next frontier
 
-[Ticket 02](./tickets/02-visible-endpoints-and-dependency-explanation.md) is ready and blocked only by the completed ticket 01. It has two separate but related outcomes:
+[Ticket 03](./tickets/03-visible-endpoints-and-dependency-explanation.md) is ready and blocked only by completed ticket 02. It owns the arbitrary-depth visible-endpoint correction and selected-task dependency explanation; grouped collapsed paths must remain non-removable because they may represent several hidden links.
 
-1. Fix `resolveVisibleRow()` for arbitrary-depth nested tasks. Today it can fall back from a hidden nested child directly to the sprint row instead of the nearest visible task ancestor.
-2. Add the selected-task “Blocked by” / “Blocks” explanation. Grouped collapsed paths must stay non-removable because they may represent several hidden links.
-
-Do not reopen React Flow for ticket 02: its geometry/cache ownership conflicts with this timeline's date grid, native scroll, collapse projection, and live drag repaint. The supporting research and reversal are recorded in [`../../wayfinding/reactflow-rendering-boundary/`](../../wayfinding/reactflow-rendering-boundary/map.md) and `spec.md`.
+Do not reopen React Flow for either ticket: its geometry/cache ownership conflicts with this timeline's date grid, native scroll, collapse projection, and live drag repaint. The supporting research and reversal are recorded in [`../../wayfinding/reactflow-rendering-boundary/`](../../wayfinding/reactflow-rendering-boundary/map.md) and `spec.md`.
 
 ## Deliberate limits, not regressions
 
-- Dependencies are step-level in the scheduling engine. Plain task roll-up bars, sprint rows, and milestones do not offer direct-link targets; adding group-level semantics needs its own rule/design work.
+- Dependencies are step-level in the scheduling engine. Plain task roll-up bars and milestones do not offer direct-link targets; adding group-level semantics needs its own rule/design work.
 - Rolled-up bars on collapsed parents, sprint commitment versus current position/spill, rule-driven blocking, contacts, and schedule-change reasons remain unimplemented. Their unresolved design work stays in [`todo.md`](./todo.md).
 - `collapsibleDescendantIds()` has a defensive 64-iteration cap. That is a separate arbitrary-depth limitation to address when working on the nested-tree slice.
 

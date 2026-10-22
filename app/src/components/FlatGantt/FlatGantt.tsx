@@ -2,7 +2,7 @@
 
 // Main Gantt view — ported from prototype/app.js's render()/layoutFlat() for
 // the flat (non-3D/4D — out of scope per spec) surface, with the sticky
-// sidebar, collapsible sprint rows, and milestone diamonds the prototype
+// sidebar, collapsible task rows, and milestone diamonds the prototype
 // doesn't have.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -30,10 +30,9 @@ import { buildContext } from "@/lib/store/deriveContext";
 
 import {
   AXIS_H,
+  DATE_AXIS_H,
   DEFAULT_DW,
   LABEL_W,
-  SPRINT_H,
-  UNSCHEDULED_ID,
   allCollapsibleIds,
   barPosForRow,
   buildRows,
@@ -195,8 +194,7 @@ export function FlatGantt() {
   }, [rows]);
 
   // All rows by row id (not just linkable ones) — lets resolveVisibleRow
-  // climb from a hidden step to its (always-present-once-expanded) task row,
-  // then to its (always-present) sprint row.
+  // resolve a hidden step to its visible task row.
   const rowsById = useMemo(() => {
     const m: Record<string, GanttRow> = {};
     rows.forEach((r) => (m[r.id] = r));
@@ -302,38 +300,29 @@ export function FlatGantt() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sprint bands — v2's "sprints render as calendar bands" (DECIDED half,
-  // see spec.md), additive only: draws a tinted full-height column range for
-  // each real sprint's [start, end], underneath everything else, same visual
-  // language as weekendBands below. Does NOT touch buildRows()'s sprint-row
-  // grouping — whether a sprint also keeps its own row is still OPEN (see
-  // spec/v2/todo.md), untouched here. Alternating fill colors ported from
+  // Sprint bands — v2's "sprints render as calendar bands" direction:
+  // tinted full-height column ranges underneath everything else. Alternating
+  // fill colors are ported from
   // prototype/app.js's own sprint-axis rendering (`i % 2 ? "#eef2ff" : "#e0e7ff"`).
   const sprintBands: JSX.Element[] = [];
-  sched.sprints
-    .filter((s) => s.id !== UNSCHEDULED_ID)
-    .forEach((s, i) => {
+  sched.sprints.forEach((s, i) => {
       const x1 = xForDate(T0, parseISO(s.start), dw);
       const x2 = xForDate(T0, parseISO(s.end), dw) + dw;
       sprintBands.push(
         <rect
           key={s.id}
           x={x1}
-          y={AXIS_H}
+          y={DATE_AXIS_H}
           width={Math.max(0, x2 - x1)}
-          height={svgHeight - AXIS_H}
+          height={svgHeight - DATE_AXIS_H}
           fill={i % 2 ? "#eef2ff" : "#e0e7ff"}
         />,
       );
-      // Label sits below the first sprint-group header row's own full-width
-      // highlight rect (rows.map(...) below, "#eef2ff" fill for row.kind ===
-      // "sprint") — that row is always the topmost row in the tree and would
-      // otherwise paint over (and hide) a label placed right under the axis.
       sprintBands.push(
         <text
           key={`${s.id}-label`}
           x={x1 + 4}
-          y={AXIS_H + SPRINT_H + 12}
+          y={DATE_AXIS_H + 13}
           fontSize={10}
           fontWeight={600}
           fill="#4338ca"
@@ -341,7 +330,7 @@ export function FlatGantt() {
           {s.name}
         </text>,
       );
-    });
+  });
 
   const weekendBands: JSX.Element[] = [];
   for (let i = 0; i < DAYS; i++) {
@@ -361,10 +350,10 @@ export function FlatGantt() {
   }
 
   // 3-row date-axis header (month label / weekday letter / date number),
-  // each row an even third of AXIS_H — replaces the old single "month
+  // each row an even third of DATE_AXIS_H — replaces the old single "month
   // abbrev. every Monday" row (owner feedback: zoom in, make days/weeks
   // legible — see spec.md's "Further Notes").
-  const AXIS_ROW_H = AXIS_H / 3;
+  const AXIS_ROW_H = DATE_AXIS_H / 3;
   const monthLabels: JSX.Element[] = [];
   const weekdayLabels: JSX.Element[] = [];
   const dateLabels: JSX.Element[] = [];
@@ -390,7 +379,7 @@ export function FlatGantt() {
     );
     // Date number: day-of-month, directly under its weekday letter.
     dateLabels.push(
-      <text key={i} x={cx} y={AXIS_H - 5} fontSize={10.5} fontWeight={500} fill="#374151" textAnchor="middle">
+      <text key={i} x={cx} y={DATE_AXIS_H - 5} fontSize={10.5} fontWeight={500} fill="#374151" textAnchor="middle">
         {dt.getDate()}
       </text>,
     );
@@ -641,7 +630,7 @@ export function FlatGantt() {
                     y={row.y}
                     width={width}
                     height={row.height}
-                    fill={row.kind === "sprint" ? "#eef2ff" : "transparent"}
+                    fill="transparent"
                   />
                 ) : null,
               )}
@@ -779,7 +768,7 @@ function RowLabel({
         paddingLeft: indent,
         paddingRight: 8,
         gap: 6,
-        background: row.kind === "sprint" ? "#eef2ff" : "#fff",
+        background: "#fff",
         borderBottom: "1px solid #f1f3f6",
         boxSizing: "border-box",
       }}
@@ -814,8 +803,8 @@ function RowLabel({
       )}
       <div style={{ overflow: "hidden" }}>
         <Text
-          size={row.kind === "sprint" ? "sm" : "xs"}
-          fw={row.kind === "sprint" ? 700 : row.kind === "task" ? 600 : 400}
+          size="xs"
+          fw={row.kind === "task" ? 600 : 400}
           truncate
         >
           {row.label}
@@ -826,25 +815,6 @@ function RowLabel({
           </Text>
         )}
       </div>
-      {row.kind === "sprint" && (
-        <Menu position="bottom-start" shadow="md">
-          <Menu.Target>
-            <ActionIcon size="xs" variant="subtle" ml="auto">
-              ⋯
-            </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item
-              onClick={() => {
-                const name = window.prompt("New task name");
-                if (name) state.addTask(name, { sprintId: row.id });
-              }}
-            >
-              Add Task
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      )}
       {row.kind === "task" && row.taskId && (
         <Menu position="bottom-start" shadow="md">
           <Menu.Target>

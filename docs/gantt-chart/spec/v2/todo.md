@@ -4,7 +4,6 @@ Temporary working doc, not part of the versioned spec proper — tracks what's g
 
 ## Needs a direct decision from the project owner (grilling)
 
-- **Does a sprint keep its own row in the tree, in addition to the new calendar band?** Blocks scoping the sprint-bands work precisely — built the additive-band version in the meantime (band only, row untouched), see `CHANGELOG.md`.
 - **Concrete example of "nobody assigned but overlapping."** Can't write this Blocked rule precisely without one.
 - **Handoff checkpoint shape** — named step, percentage, or day offset. Recommended: named step (reuses nesting). Not confirmed.
 - **Contacts vs. `watchers` vs. `stakeholders`** — recommended resolving the older `watchers`/`stakeholders` ambiguity first, then deciding if Contacts is a third thing or a rename of one of those two.
@@ -13,7 +12,7 @@ Temporary working doc, not part of the versioned spec proper — tracks what's g
 
 ## Confirmed bugs, not yet fixed
 
-- **Dependency/milestone lines resolve to the wrong visible row when nested work is collapsed — still open, now ticketed.** Ticket 01 removed the React Flow anchors that produced one class of orphaned dot/line artifact; the live renderer is now native SVG, so the old `flowEdges`/anchor explanation is historical only. The remaining concrete defect is in `resolveLinkEndpoint.ts`'s `resolveVisibleRow()`: it only checks a step's own row, `${sprintId}::${taskId}`, then the sprint row. It cannot walk arbitrary nested task row ids such as `${parentRowId}::${childId}`, so a hidden nested child can skip its nearest visible task ancestor and project straight to the sprint. [Ticket 02](./tickets/02-visible-endpoints-and-dependency-explanation.md) owns this correction and must verify grouping/no-dangling paths in a real collapsed state rather than infer success from a build.
+- **Dependency/milestone lines resolve to the wrong visible row when nested work is collapsed — still open, now ticketed.** Ticket 02 first removes sprint rows from the tree. Then [ticket 03](./tickets/03-visible-endpoints-and-dependency-explanation.md) must replace `resolveLinkEndpoint.ts`'s sprint fallback with an arbitrary-depth climb to the nearest visible task ancestor and verify grouped paths in a real collapsed state rather than infer success from a build.
 
 ## Needs a research or engineering pass, not a conversation
 

@@ -7,7 +7,8 @@
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --experimental-strip-types --test src/lib/store/expandedRows.test.ts"
   },
   "dependencies": {
     "next": "14.2.3",

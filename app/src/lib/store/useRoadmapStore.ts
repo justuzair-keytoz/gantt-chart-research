@@ -27,8 +27,9 @@ import type {
   TaskDef,
 } from "@/lib/engine/types";
 import { addDays, parseISO, toISO } from "@/lib/engine/date-utils";
-import { BASE_LINKS, BASE_SPRINTS, PEOPLE, T0 } from "@/lib/mock-data";
+import { BASE_LINKS, BASE_SPRINTS, BASE_TASKS, PEOPLE, T0 } from "@/lib/mock-data";
 import { buildContext, nextSegment } from "./deriveContext";
+import { migrateExpandedRowIds } from "./expandedRows";
 
 export interface RoadmapPersistedState {
   scenarios: Scenario[];
@@ -78,7 +79,7 @@ export interface RoadmapState extends RoadmapPersistedState {
 
   togglePersonOut: (preset: PersonOut, on: boolean) => void;
 
-  addTask: (name: string, opts?: { sprintId?: string }) => string;
+  addTask: (name: string) => string;
   addMilestone: (name: string) => string;
   addStep: (taskId: string, name: string, durationDays?: number) => void;
 
@@ -103,6 +104,10 @@ function freshWorkingScenario(): Scenario {
   return { ...WORKING_SCENARIO, ov: emptyOverlay(), history: [] };
 }
 
+function rootTaskIds(tasks: TaskDef[]): string[] {
+  return tasks.filter((task) => !task.parentTaskId).map((task) => task.id);
+}
+
 export const useRoadmapStore = create<RoadmapState>()(
   persist(
     (set, get) => ({
@@ -110,13 +115,7 @@ export const useRoadmapStore = create<RoadmapState>()(
       active: "working",
       asOf: "2026-10-10",
       decisions: [],
-      // Real row ids for a task with steps are "<sprintId>::<taskId>", not a
-      // bare task id (and sprint assignment itself is computed from the
-      // schedule, not a static field) — this list used to hold bare task
-      // ids ("OAK-151", ...) that never matched anything, so nothing was
-      // ever expanded by default. Defaulting to the sprint ids themselves
-      // (stable, not schedule-dependent) actually opens the sprints instead.
-      expanded: ["s5", "s6", "s7", "s8", "s9"],
+      expanded: rootTaskIds(BASE_TASKS),
       userTasks: [],
       userMilestones: [],
       taskStepOverrides: {},
@@ -255,12 +254,9 @@ export const useRoadmapStore = create<RoadmapState>()(
         });
       },
 
-      addTask: (name, opts) => {
+      addTask: (name) => {
         const id = `TASK-${Date.now().toString(36)}`;
-        const sprint = opts?.sprintId
-          ? get().baseSprints.find((sp) => sp.id === opts.sprintId)
-          : null;
-        const startDate = sprint ? sprint.start : get().asOf;
+        const startDate = get().asOf;
         const dueDate = toISO(addDays(parseISO(startDate), 2));
         const task: TaskDef = { id, name, startDate, dueDate, milestone: null, path: [] };
         set((s) => ({ userTasks: [...s.userTasks, task] }));
@@ -374,6 +370,18 @@ export const useRoadmapStore = create<RoadmapState>()(
     }),
     {
       name: "gantt-roadmap-sim-v1",
+      version: 2,
+      migrate: (persistedState) => {
+        const persisted = persistedState as RoadmapPersistedState;
+        return {
+          ...persisted,
+          expanded: migrateExpandedRowIds(
+            persisted.expanded ?? [],
+            (persisted.baseSprints ?? BASE_SPRINTS).map((sprint) => sprint.id),
+            rootTaskIds([...BASE_TASKS, ...(persisted.userTasks ?? [])]),
+          ),
+        };
+      },
       partialize: (s) => ({
         scenarios: s.scenarios,
         active: s.active,
